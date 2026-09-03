@@ -1,0 +1,112 @@
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "isoperiod"
+version = "0.1.0"
+description = "ISO 8601 period and duration arithmetic, including offsets from the natural boundary, for defining sampling resolution and periodicity in timeseries data"
+readme = "README.md"
+authors = [
+  {name = "Richard Smith", email = "ricsmi@ceh.ac.uk"}
+]
+maintainers = [
+  {name = "Richard Smith", email = "ricsmi@ceh.ac.uk"}
+]
+classifiers = [
+"License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
+license = { file = "LICENSE" }
+dependencies = []
+requires-python = ">= 3.12"
+
+[dependency-groups]
+dev = [
+    { include-group = "lint" },
+    { include-group = "test" },
+    { include-group = "typecheck" },
+
+    { include-group = "docs" },
+
+]
+lint = [
+    "ruff",
+]
+test = [
+    "coverage",
+    "pytest",
+    "pytest-cov",
+]
+typecheck = [
+    "pyright",
+]
+docs = [
+    "sphinx",
+    "shibuya>=2025.9.25",
+    "sphinx-copybutton",
+    "sphinx-design>=0.6.1",
+    "sphinx-iconify>=0.2.1",
+    "sphinx-autodoc-typehints",
+    "sphinx-autobuild",
+    "sphinx-contributors>=0.2.7",
+    "myst-parser",
+]
+
+
+[project.urls]
+bugs = "https://github.com/richjam/isoperiod/issues"
+changelog = "https://github.com/richjam/isoperiod/releases"
+documentation = "https://richjam.github.io/isoperiod/"
+homepage = "https://github.com/richjam/isoperiod"
+
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+include = ["src", "tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+
+[tool.coverage.run]
+branch = true
+parallel = true
+source = ["src/", "tests/"]
+omit = ["src/*/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 90
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "@overload",
+    "@typing.overload",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+    "raise NotImplementedError",
+    "except PackageNotFoundError",
+    "if __name__ == .__main__.",
+    "\\.\\.\\.",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=src --cov-report=term-missing"
+
+[tool.uv]
+package = true
+default-groups = ["dev"]

@@ -1,0 +1,47 @@
+#!/bin/sh
+#
+# Pre-commit hook: runs ruff format and lint checks via uv.
+# Requires uv on PATH: https://docs.astral.sh/uv/getting-started/installation/
+#
+# Installed automatically by post-generation hook via:
+#   git config core.hooksPath .githooks
+#
+# To install manually in an existing clone:
+#   make install-hooks
+
+# Redirect output to stderr.
+exec 1>&2
+
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+format_err=0
+check_err=0
+err=0
+
+echo 'Running "uv run ruff format --check"'
+uv run ruff format --check
+
+if [ "$?" -eq 1 ]; then
+    format_err=1
+    err=1
+fi
+
+echo 'Running "uv run ruff check"'
+uv run ruff check
+
+if [ "$?" -eq 1 ]; then
+    check_err=1
+    err=1
+fi
+
+if [ "${format_err}" -eq 1 ] ; then
+    echo "${RED}Run \"ruff format\" before committing${NC}"
+fi
+
+if [ "${check_err}" -eq 1 ] ; then
+    echo "${RED}Correct ruff errors before committing${NC}"
+fi
+
+if [ "${err}" -eq 1 ] ; then
+    exit 1
+fi

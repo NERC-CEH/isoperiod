@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+title: "isoperiod"
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+authors:
+  - given-names: "Richard"
+    family-names: "Smith"
+    email: "ricsmi@ceh.ac.uk"
+    affiliation: "UKCEH"
+    #orcid: "https://orcid.org/0000-0000-0000-0000"  # TODO: add your ORCID
+abstract: "ISO 8601 period and duration arithmetic, including offsets from the natural boundary, for defining sampling resolution and periodicity in timeseries data"
+repository-code: "https://github.com/richjam/isoperiod"
+license: MIT
+version: 0.1.0
+contact:
+  - given-names: "Richard"
+    family-names: "Smith"
+    email: "ricsmi@ceh.ac.uk"
+    affiliation: "UKCEH"
+# TODO before publishing / depositing:
+#   - Add ORCID(s) for each author
+#   - Add keywords as NERC vocabulary URIs, e.g.:
+#     keywords:
+#       - "http://onto.nerc.ac.uk/vocab/..."
+# TODO after deposit in a catalogue (e.g. EIDC, Zenodo):
+#   - doi: "10.5281/zenodo.xxxxxx"
+#   - repository: "https://catalogue.ceh.ac.uk/documents/..."
+#   - date-released: "YYYY-MM-DD"
+# See https://github.com/NERC-CEH/repo-guidance/blob/main/cff-guidance/citation-cff_guidelines.md
