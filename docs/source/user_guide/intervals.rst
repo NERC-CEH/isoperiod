@@ -145,7 +145,7 @@ or send them between systems; store the datetime and re-derive the ordinal.
 
    An ordinal is only meaningful to the period that produced it. Each period numbers the timeline in its own
    units, so passing one period's ordinal to another period's :meth:`~isoperiod.Period.datetime` would not be
-    meaningful.
+   meaningful.
 
 The ends of the timeline
 ========================

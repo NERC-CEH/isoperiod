@@ -11,15 +11,15 @@ and periodicity in timeseries data
 
 ## Features
 
-* **ISO 8601 durations** — build a period from `"PT15M"`, `"P1D"` or `"P1Y"`, and get the canonical string back out.
-* **Offsets** — shift every interval boundary off its natural position, for hydrological days (`"P1D+T9H"`) and
+* **ISO 8601 durations** - build a period from `"PT15M"`, `"P1D"` or `"P1Y"`.
+* **Offsets** - shift every interval boundary off its natural position, for hydrological days (`"P1D+T9H"`) and
   water years (`"P1Y+9MT9H"`).
-* **Origins** — pin the grid to a chosen datetime with the `"2024-01-01/P7D"` form.
-* **Ordinals** — every interval on the timeline has an integer ordinal, so flooring, stepping and grouping are
+* **Origins** - pin the grid to a chosen datetime with the `"2024-01-01/P7D"` form.
+* **Ordinals** - every interval on the timeline has an integer ordinal, so flooring, stepping and grouping are
   integer arithmetic, calendar months included.
-* **Alignment** — check that a timestamp sits on a period boundary, and whether one period nests cleanly inside
+* **Alignment** - check that a timestamp sits on a period boundary, and whether one period nests cleanly inside
   another.
-* **No runtime dependencies** — pure Python on top of `datetime`, with helpers for handing periods to Polars.
+* **No runtime dependencies** - pure Python on top of `datetime`, with helpers for handing periods to Polars.
 
 See the [documentation](https://nerc-ceh.github.io/isoperiod/) for a quick start, the concepts behind the API, and the full reference.
 
