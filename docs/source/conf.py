@@ -36,6 +36,9 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "**.ipynb_checkpoints"]
 autosummary_generate = True
 autodoc_typehints = "description"
 autoclass_content = "class"
+# Period is abstract and built through its factory methods, so keep the internal
+# constructor signature off the class heading in the API reference.
+autodoc_class_signature = "separated"
 
 # -- HTML output -------------------------------------------------------------
 html_theme = "shibuya"
@@ -49,11 +52,21 @@ html_context = {
 html_theme_options = {
     "accent_color": "blue",
     "nav_links": [
-        {"title": "Installation", "url": "installation"},
-        {"title": "API reference", "url": "api"},
+        {"title": "Getting started", "url": "getting_started/installation"},
+        {"title": "User guide", "url": "user_guide/creating"},
+        {"title": "Development", "url": "developer/contributing"},
+        {"title": "API reference", "url": "api/period"},
     ],
-    "github_url": "https://github.com/richjam/isoperiod",
+    "github_url": "https://github.com/NERC-CEH/isoperiod",
 }
+
+# Resolve references to stdlib types (datetime, timedelta, tzinfo ...) against the
+# Python docs, so both :class:`...` roles and autodoc'd type hints become links.
+intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+
+# Single backticks in docstrings mean "literal code", not reST's default
+# "title reference" (which renders as an italic <cite>).
+default_role = "code"
 
 # -- Napoleon settings -------------------------------------------------------
 napoleon_google_docstring = True

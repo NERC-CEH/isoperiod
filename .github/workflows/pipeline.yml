@@ -102,7 +102,7 @@ jobs:
         run: |
           VERSION=$(grep '^version' pyproject.toml | sed 's/.*"\(.*\)"/\1/')
           if git ls-remote --tags origin | grep -q "refs/tags/v$VERSION$"; then
-            echo "Tag v$VERSION already exists — skipping release"
+            echo "Tag v$VERSION already exists - skipping release"
             exit 0
           fi
           make release
