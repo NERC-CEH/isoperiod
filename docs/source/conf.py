@@ -52,8 +52,16 @@ html_theme_options = {
         {"title": "Installation", "url": "installation"},
         {"title": "API reference", "url": "api"},
     ],
-    "github_url": "https://github.com/richjam/isoperiod",
+    "github_url": "https://github.com/NERC-CEH/isoperiod",
 }
+
+# Resolve references to stdlib types (datetime, timedelta, tzinfo ...) against the
+# Python docs, so both :class:`...` roles and autodoc'd type hints become links.
+intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+
+# Single backticks in docstrings mean "literal code", not reST's default
+# "title reference" (which renders as an italic <cite>).
+default_role = "code"
 
 # -- Napoleon settings -------------------------------------------------------
 napoleon_google_docstring = True

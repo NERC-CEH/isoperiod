@@ -6,7 +6,7 @@ Contributions are welcome and greatly appreciated.
 
 ### Report Bugs
 
-Report bugs at https://github.com/richjam/isoperiod/issues.
+Report bugs at https://github.com/NERC-CEH/isoperiod/issues.
 
 If you are reporting a bug, please include:
 
@@ -43,7 +43,7 @@ to your code (the API reference page is auto-generated).
 ### Submit Feedback
 
 The best way to send feedback is to file an issue at
-https://github.com/richjam/isoperiod/issues.
+https://github.com/NERC-CEH/isoperiod/issues.
 
 If you are proposing a feature:
 

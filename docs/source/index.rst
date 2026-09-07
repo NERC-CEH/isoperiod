@@ -16,20 +16,20 @@ Current version: |release|
 .. container:: buttons
 
     `Docs <installation.html>`_
-    `GitHub <https://github.com/richjam/isoperiod>`_
+    `GitHub <https://github.com/NERC-CEH/isoperiod>`_
 
 Community
 =========
 
 Developed at `UKCEH <https://www.ceh.ac.uk/>`_, welcoming community engagement and contributions.
 
-.. contributors:: richjam/isoperiod
+.. contributors:: NERC-CEH/isoperiod
     :avatars:
 
 License
 =======
 
-This project is licensed under the `MIT <https://github.com/richjam/isoperiod/blob/main/LICENSE>`_.
+This project is licensed under the `MIT <https://github.com/NERC-CEH/isoperiod/blob/main/LICENSE>`_.
 
 
 .. toctree::

@@ -4,10 +4,7 @@
 API Reference
 =============
 
-.. currentmodule:: isoperiod
-
-.. autosummary::
-   :toctree: _autosummary
-   :recursive:
-
-   isoperiod
+.. automodule:: isoperiod
+   :members:
+   :show-inheritance:
+   :member-order: bysource

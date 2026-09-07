@@ -56,10 +56,10 @@ docs = [
 
 
 [project.urls]
-bugs = "https://github.com/richjam/isoperiod/issues"
-changelog = "https://github.com/richjam/isoperiod/releases"
-documentation = "https://richjam.github.io/isoperiod/"
-homepage = "https://github.com/richjam/isoperiod"
+bugs = "https://github.com/NERC-CEH/isoperiod/issues"
+changelog = "https://github.com/NERC-CEH/isoperiod/releases"
+documentation = "https://nerc-ceh.github.io/isoperiod/"
+homepage = "https://github.com/NERC-CEH/isoperiod"
 
 
 [tool.pyright]
@@ -105,7 +105,7 @@ exclude_also = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=src --cov-report=term-missing"
+addopts = "--import-mode=importlib --cov=src --cov-report=term-missing"
 
 [tool.uv]
 package = true
