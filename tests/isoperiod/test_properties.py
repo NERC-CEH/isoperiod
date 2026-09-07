@@ -267,6 +267,36 @@ class TestCount:
         """Test that a day aligns to a month boundary but months have no constant day count."""
         assert seconds(86_400).count(months(1)) == 0
 
+    @pytest.mark.parametrize(
+        "self_props,other_props,expected",
+        [
+            (seconds(3_600), months(1, microsecond_offset=1_800_000_000), -1),
+            (seconds(86_400), months(12, month_offset=9, microsecond_offset=32_400_000_000), -1),
+            (seconds(86_400, microsecond_offset=32_400_000_000), months(12, month_offset=9), -1),
+            (seconds(3_600), months(1, microsecond_offset=3_600_000_000), 0),
+            (
+                seconds(86_400, microsecond_offset=32_400_000_000),
+                months(12, month_offset=9, microsecond_offset=32_400_000_000),
+                0,
+            ),
+        ],
+        ids=[
+            "hours vs month offset by 30 minutes",
+            "days vs water year (09:00 boundary)",
+            "water days vs plain year (midnight boundary)",
+            "hours vs month offset by a whole hour",
+            "water days vs water year",
+        ],
+    )
+    def test_seconds_within_offset_months(self, self_props: Properties, other_props: Properties, expected: int) -> None:
+        """Test that a seconds period aligns to an offset months period only if the offsets differ by a whole
+        number of self-intervals.
+
+        The offsets are held in microseconds, so the multipliers must be compared in microseconds too - a
+        seconds-unit comparison here wrongly reports a 30-minute offset as aligned to an hourly period.
+        """
+        assert self_props.count(other_props) == expected
+
     def test_months_within_months(self) -> None:
         """Test that a month fits 12 times in a year."""
         assert months(1).count(months(12)) == 12

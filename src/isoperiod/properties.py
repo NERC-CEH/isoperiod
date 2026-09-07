@@ -626,10 +626,13 @@ class Properties:
             # is the largest unit common to every month, so only alignment (not a
             # count) can be determined here.
             # math.gcd(28, 29, 30, 31) == 1, so it's enough to check that self aligns
-            # to a day; other.month_offset can be ignored.
-            day_in_self_unit = 86_400_000_000 if self.step == Step.MICROSECONDS else 86_400
+            # to a day; other.month_offset can be ignored, as a whole number of months
+            # shifts a boundary by a whole number of days.
+            # Microseconds are the shared unit: offsets are always held in microseconds,
+            # so the multipliers must be too.
+            day_in_microseconds = 86_400_000_000
             result = self._divisible_count(
-                self.multiplier, day_in_self_unit, self.microsecond_offset, other.microsecond_offset
+                self_us, day_in_microseconds, self.microsecond_offset, other.microsecond_offset
             )
             return CountResult.ALIGNED_UNKNOWN if result != CountResult.UNALIGNED else CountResult.UNALIGNED
 
