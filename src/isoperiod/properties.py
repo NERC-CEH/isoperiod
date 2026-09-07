@@ -1,16 +1,15 @@
 """Properties: the basic, immutable, sortable, hashable specification of a Period."""
 
 import datetime as dt
-from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
-from isoperiod.enums import CountResult, Precision, Step
-from isoperiod.exceptions import PeriodConfigError, PeriodValidationError, illegal_step
-from isoperiod.formatting import format_aware, format_naive, format_tzdelta
+from isoperiod.enums import Step
+from isoperiod.exceptions import PeriodValidationError, illegal_step
 from isoperiod.iso import (
     append_month_elems,
     append_second_elems,
+    format_tzdelta,
     microsecond_period_name,
     month_period_name,
     second_period_name,
@@ -19,6 +18,27 @@ from isoperiod.iso import (
 
 if TYPE_CHECKING:
     from isoperiod.parsing import PeriodFields
+
+
+@dataclass(frozen=True)
+class Alignment:
+    """How one period's intervals sit inside another's: the result of `Properties._alignment`.
+
+    Attributes:
+        aligned: True if every interval of the inner period lies wholly within one interval of the outer,
+            never straddling a boundary
+        count: The number of inner intervals per outer interval, when that number is the same for every
+            interval on the timeline; None when there is no such number
+    """
+
+    aligned: bool
+    count: int | None
+
+
+# The two results that carry no count: intervals that do not line up at all, and intervals that line up but
+# whose count varies from one to the next (days in a month, which run from 28 to 31).
+UNALIGNED = Alignment(aligned=False, count=None)
+ALIGNED_VARYING = Alignment(aligned=True, count=None)
 
 
 @dataclass(eq=True, order=True, frozen=True)
@@ -386,119 +406,6 @@ class Properties:
         if self.ordinal_shift != 0:
             elems.append(str(self.ordinal_shift))
 
-    def _precision(self, *, cap_at_hour: bool) -> Precision:
-        """Return the finest time component a datetime formatter for this period needs to include.
-
-        The choice follows from the multiplier and the offsets: a period of whole days needs only the date,
-        one of whole minutes needs the minutes, and a sub-second offset forces microseconds.
-
-        Args:
-            cap_at_hour: Never return coarser than HOUR, as an aware format requires (see `_aware_precision`)
-
-        Returns:
-            The Precision to format at
-        """
-        # Check if microseconds need to be output
-        o_total_milliseconds, o_microseconds_nnn = divmod(self.microsecond_offset, 1_000)
-        if o_microseconds_nnn != 0:
-            return Precision.MICROSECOND
-        # Check if milliseconds need to be output
-        o_total_seconds, o_milliseconds_nnn = divmod(o_total_milliseconds, 1_000)
-        if self.step == Step.MICROSECONDS:
-            s_total_milliseconds, s_microseconds_nnn = divmod(self.multiplier, 1_000)
-            if s_microseconds_nnn != 0:
-                return Precision.MICROSECOND
-            s_milliseconds_nnn = s_total_milliseconds % 1_000
-            if (s_milliseconds_nnn != 0) or (o_milliseconds_nnn != 0):
-                return Precision.MILLISECOND
-            return Precision.SECOND
-        if o_milliseconds_nnn != 0:
-            return Precision.MILLISECOND
-
-        # Check if seconds need to be output
-        o_total_minutes, o_seconds_nn = divmod(o_total_seconds, 60)
-        if o_seconds_nn != 0:
-            return Precision.SECOND
-        o_total_hours, o_minutes_nn = divmod(o_total_minutes, 60)
-        o_total_days, o_hours_nn = divmod(o_total_hours, 24)
-        if self.step == Step.SECONDS:
-            s_total_minutes, s_seconds_nn = divmod(self.multiplier, 60)
-            if s_seconds_nn != 0:
-                return Precision.SECOND
-            s_total_hours, s_minutes_nn = divmod(s_total_minutes, 60)
-            if (s_minutes_nn != 0) or (o_minutes_nn != 0):
-                return Precision.MINUTE
-            if cap_at_hour:
-                return Precision.HOUR
-            s_hours_nn = s_total_hours % 24
-            if (s_hours_nn != 0) or (o_hours_nn != 0):
-                return Precision.HOUR
-            return Precision.DAY
-        # Check if minutes/hours/days need to be output
-        if o_minutes_nn != 0:
-            return Precision.MINUTE
-        if o_hours_nn != 0:
-            return Precision.HOUR
-        if cap_at_hour:
-            # Only MONTHS remains as a valid step here (SECONDS/MICROSECONDS were
-            # handled above), and a timezone-aware format never goes coarser than HOUR.
-            if self.step != Step.MONTHS:
-                raise PeriodConfigError(
-                    f"Error retrieving datetime formatter function. Invalid step: '{self.step}' for the period."
-                )
-            return Precision.HOUR
-        if o_total_days > 0:
-            return Precision.DAY
-
-        if self.step != Step.MONTHS:
-            raise PeriodConfigError(
-                f"Error retrieving datetime formatter function. Invalid step: '{self.step}' for the period."
-            )
-
-        o_months_nn = self.month_offset % 12
-        s_months_nn = self.multiplier % 12
-        # Check if months need to be output
-        if (s_months_nn != 0) or (o_months_nn != 0):
-            return Precision.MONTH
-        return Precision.YEAR
-
-    def _naive_precision(self) -> Precision:
-        """Return the finest time component a naive-datetime formatter for this period needs to include.
-
-        Returns:
-            The Precision to format at
-        """
-        return self._precision(cap_at_hour=False)
-
-    def get_naive_formatter(self) -> Callable[[dt.datetime], str]:
-        """Return a formatter function for naive datetime objects of this period.
-
-        Returns:
-            A function that takes a single datetime argument and returns a string
-        """
-        precision = self._naive_precision()
-        return lambda datetime_obj: format_naive(datetime_obj, precision)
-
-    def _aware_precision(self) -> Precision:
-        """Return the finest time component a timezone-aware-datetime formatter for this period needs to include.
-
-        Unlike `_naive_precision`, this never returns coarser than HOUR: there is no DAY/MONTH/YEAR precision
-        for a timezone-aware format (see `format_aware`).
-
-        Returns:
-            The Precision to format at, never coarser than HOUR
-        """
-        return self._precision(cap_at_hour=True)
-
-    def get_aware_formatter(self) -> Callable[[dt.datetime], str]:
-        """Return a datetime formatter function suitable for formatting timezone aware datetime objects of this period.
-
-        Returns:
-            A function that takes a single datetime argument and returns a string
-        """
-        precision = self._aware_precision()
-        return lambda datetime_obj: format_aware(datetime_obj, precision)
-
     def pl_interval(self) -> str:
         """The step and multiplier as a Polars duration string.
 
@@ -583,21 +490,49 @@ class Properties:
         """
         return self.multiplier if self.step == Step.MICROSECONDS else self.multiplier * 1_000_000
 
-    def count(self, other: "Properties") -> int:
-        """Return the number of intervals of this period per interval of `other`, or a CountResult sentinel.
+    def count(self, other: "Properties") -> int | None:
+        """Return the number of intervals of this period per interval of `other`, or None if there is no
+        constant number.
 
-        Backs :meth:`isoperiod.Period.count`; see there for the alignment rules and the meaning of the
-        sentinel values.
+        Backs :meth:`isoperiod.Period.count`; see there for details.
 
         Args:
             other: The period whose intervals this period's intervals are counted within
 
         Returns:
-            The number of intervals per interval of `other`, or a CountResult sentinel
+            The constant number of intervals per interval of `other`, or None
+        """
+        return self._alignment(other).count
+
+    def is_subperiod_of(self, other: "Properties") -> bool:
+        """Return True if every interval of this period falls entirely inside a single interval of `other`.
+
+        Backs :meth:`isoperiod.Period.is_subperiod_of`; see there for details.
+
+        Args:
+            other: The period whose intervals must contain this period's
+
+        Returns:
+            True if every interval of this period lies within one interval of `other`, False otherwise
+        """
+        return self._alignment(other).aligned
+
+    def _alignment(self, other: "Properties") -> Alignment:
+        """Return how this period's intervals sit inside `other`'s.
+
+        The single calculation that both :meth:`count` and :meth:`is_subperiod_of` read from, since the two
+        facts - whether the boundaries line up, and how many intervals fit - are worked out together. Each
+        public method returns one field of the result.
+
+        Args:
+            other: The period whose intervals this period's intervals are counted within
+
+        Returns:
+            An Alignment: aligned, plus the constant count if there is one
         """
         # Periods over different timezones are not aligned
         if self.tzinfo != other.tzinfo:
-            return CountResult.UNALIGNED
+            return UNALIGNED
 
         # The same period fits itself exactly once.
         # The ordinal_shift can be ignored as it does not affect how the timeline is split.
@@ -607,16 +542,16 @@ class Properties:
             and (self.month_offset == other.month_offset)
             and (self.microsecond_offset == other.microsecond_offset)
         ):
-            return 1
+            return Alignment(aligned=True, count=1)
 
         if self.step == Step.MONTHS:
             if other.step != Step.MONTHS:
                 # A month period can never fit evenly within a smaller, fixed-length period.
-                return CountResult.UNALIGNED
-            result = self._divisible_count(self.multiplier, other.multiplier, self.month_offset, other.month_offset)
-            if (result == CountResult.UNALIGNED) or (self.microsecond_offset != other.microsecond_offset):
-                return CountResult.UNALIGNED
-            return result
+                return UNALIGNED
+            count = self._divisible_count(self.multiplier, other.multiplier, self.month_offset, other.month_offset)
+            if (count is None) or (self.microsecond_offset != other.microsecond_offset):
+                return UNALIGNED
+            return Alignment(aligned=True, count=count)
 
         # From here, self.step is Step.MICROSECONDS or Step.SECONDS.
         self_us = self._microsecond_multiplier()
@@ -631,22 +566,25 @@ class Properties:
             # Microseconds are the shared unit: offsets are always held in microseconds,
             # so the multipliers must be too.
             day_in_microseconds = 86_400_000_000
-            result = self._divisible_count(
+            count = self._divisible_count(
                 self_us, day_in_microseconds, self.microsecond_offset, other.microsecond_offset
             )
-            return CountResult.ALIGNED_UNKNOWN if result != CountResult.UNALIGNED else CountResult.UNALIGNED
+            return UNALIGNED if count is None else ALIGNED_VARYING
 
         if (self.step == Step.SECONDS) and (other.step == Step.MICROSECONDS):
             # A second period can never fit evenly within a (necessarily sub-second)
             # microsecond period.
-            return CountResult.UNALIGNED
+            return UNALIGNED
 
         other_us = other._microsecond_multiplier()
-        return self._divisible_count(self_us, other_us, self.microsecond_offset, other.microsecond_offset)
+        count = self._divisible_count(self_us, other_us, self.microsecond_offset, other.microsecond_offset)
+        return UNALIGNED if count is None else Alignment(aligned=True, count=count)
 
     @staticmethod
-    def _divisible_count(self_multiplier: int, other_multiplier: int, self_offset: int, other_offset: int) -> int:
-        """Count how many "self" intervals fit in one "other" interval.
+    def _divisible_count(
+        self_multiplier: int, other_multiplier: int, self_offset: int, other_offset: int
+    ) -> int | None:
+        """Count how many "self" intervals fit in one "other" interval, or None if they do not line up.
 
         Both periods must already be expressed in the same base unit - both in microseconds, or both in months.
 
@@ -665,12 +603,12 @@ class Properties:
             other_offset: The "other" period's offset, in the shared unit
 
         Returns:
-            The number of "self" intervals per "other" interval, or CountResult.UNALIGNED if they do not line up.
+            The number of "self" intervals per "other" interval, or None if they do not line up
 
         Examples:
-            Working in minutes for legibility (the real callers pass microseconds or months)::
+            Working in minutes for legibility (the real callers pass microseconds or months):
 
-            .. code-block:: python
+            .. code-block:: text
 
                 # Four 15-minute intervals per hour, both on the natural boundaries.
                 _divisible_count(15, 60, 0, 0) == 4
@@ -683,17 +621,17 @@ class Properties:
                 _divisible_count(15, 60, 5, 20) == 4
 
                 # An hour is not a whole multiple of 25 minutes.
-                _divisible_count(25, 60, 0, 0) == CountResult.UNALIGNED
+                _divisible_count(25, 60, 0, 0) is None
 
                 # Offsets differ by 7 minutes, which is not a whole number of 15-minute periods,
                 # so "other" starts part-way through one of "self"'s intervals.
-                _divisible_count(15, 60, 5, 12) == CountResult.UNALIGNED
+                _divisible_count(15, 60, 5, 12) is None
         """
         mult_q, mult_r = divmod(other_multiplier, self_multiplier)
         if mult_r != 0:
-            return CountResult.UNALIGNED
+            return None
         if (other_offset - self_offset) % self_multiplier != 0:
-            return CountResult.UNALIGNED
+            return None
         return mult_q
 
     def __str__(self) -> str:

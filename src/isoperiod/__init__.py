@@ -6,12 +6,11 @@ except PackageNotFoundError:
     __version__ = "unknown"
 
 
-from isoperiod.exceptions import PeriodConfigError, PeriodError, PeriodParsingError, PeriodValidationError
+from isoperiod.exceptions import PeriodError, PeriodParsingError, PeriodValidationError
 from isoperiod.periods import Period
 
 __all__ = [
     "Period",
-    "PeriodConfigError",
     "PeriodError",
     "PeriodParsingError",
     "PeriodValidationError",

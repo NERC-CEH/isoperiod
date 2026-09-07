@@ -1,10 +1,13 @@
+import datetime as dt
 import re
 
 import pytest
 
+from isoperiod.exceptions import PeriodParsingError
 from isoperiod.iso import (
     append_month_elems,
     append_second_elems,
+    format_tzdelta,
     microsecond_period_name,
     month_period_name,
     period_regex,
@@ -116,3 +119,29 @@ class TestPeriodRegex:
         assert match is not None
         assert match.group("a_years") == "1"
         assert match.group("b_months") == "2"
+
+
+class TestFormatTzdelta:
+    @pytest.mark.parametrize(
+        "delta,expected",
+        [
+            (dt.timedelta(0), "Z"),
+            (dt.timedelta(hours=5, minutes=30), "+05:30"),
+            (dt.timedelta(hours=-5), "-05:00"),
+            (dt.timedelta(hours=-5, minutes=-30), "-05:30"),
+        ],
+        ids=["zero -> Z", "positive", "negative whole hour", "negative with minutes"],
+    )
+    def test_render(self, delta: dt.timedelta, expected: str) -> None:
+        """Test that zero renders as 'Z'; anything else as a signed HH:MM."""
+        assert format_tzdelta(delta) == expected
+
+    def test_offset_of_a_day_or_more_is_rejected(self) -> None:
+        """Test that an offset that reaches a whole day is not a valid timezone offset."""
+        with pytest.raises(PeriodParsingError):
+            format_tzdelta(dt.timedelta(days=1))
+
+    def test_sub_minute_component_is_preserved(self) -> None:
+        """Test that a (rare, but ISO 8601-legal) offset with seconds is rendered in full, not silently truncated to
+        whole minutes."""
+        assert format_tzdelta(dt.timedelta(hours=5, minutes=30, seconds=15)) == "+05:30:15"

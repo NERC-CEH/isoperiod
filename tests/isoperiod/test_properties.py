@@ -2,8 +2,8 @@ import datetime as dt
 
 import pytest
 
-from isoperiod.enums import Precision, Step
-from isoperiod.exceptions import PeriodConfigError, PeriodValidationError
+from isoperiod.enums import Step
+from isoperiod.exceptions import PeriodValidationError
 from isoperiod.properties import Properties
 
 
@@ -248,6 +248,10 @@ class TestIsEpochAgnostic:
 
 
 class TestCount:
+    """count() returns a constant count or None; is_subperiod_of() carries the aligned/unaligned distinction,
+    so the two are asserted together wherever the answer is None.
+    """
+
     def test_same_period_is_one(self) -> None:
         """Test that a period fits itself exactly once."""
         assert seconds(60).count(seconds(60)) == 1
@@ -257,27 +261,30 @@ class TestCount:
         aware = Properties(
             step=Step.SECONDS, multiplier=60, month_offset=0, microsecond_offset=0, tzinfo=dt.UTC, ordinal_shift=0
         )
-        assert seconds(60).count(aware) == -1
+        assert seconds(60).count(aware) is None
+        assert not seconds(60).is_subperiod_of(aware)
 
     def test_seconds_within_seconds(self) -> None:
-        """Test that an hour contains 24 hours' worth... i.e. a day holds 24 hourly intervals."""
+        """Test that a day holds 24 hourly intervals."""
         assert seconds(3_600).count(seconds(86_400)) == 24
+        assert seconds(3_600).is_subperiod_of(seconds(86_400))
 
     def test_seconds_within_months_is_aligned_but_unknown(self) -> None:
         """Test that a day aligns to a month boundary but months have no constant day count."""
-        assert seconds(86_400).count(months(1)) == 0
+        assert seconds(86_400).count(months(1)) is None
+        assert seconds(86_400).is_subperiod_of(months(1))
 
     @pytest.mark.parametrize(
-        "self_props,other_props,expected",
+        "self_props,other_props,aligned",
         [
-            (seconds(3_600), months(1, microsecond_offset=1_800_000_000), -1),
-            (seconds(86_400), months(12, month_offset=9, microsecond_offset=32_400_000_000), -1),
-            (seconds(86_400, microsecond_offset=32_400_000_000), months(12, month_offset=9), -1),
-            (seconds(3_600), months(1, microsecond_offset=3_600_000_000), 0),
+            (seconds(3_600), months(1, microsecond_offset=1_800_000_000), False),
+            (seconds(86_400), months(12, month_offset=9, microsecond_offset=32_400_000_000), False),
+            (seconds(86_400, microsecond_offset=32_400_000_000), months(12, month_offset=9), False),
+            (seconds(3_600), months(1, microsecond_offset=3_600_000_000), True),
             (
                 seconds(86_400, microsecond_offset=32_400_000_000),
                 months(12, month_offset=9, microsecond_offset=32_400_000_000),
-                0,
+                True,
             ),
         ],
         ids=[
@@ -288,23 +295,28 @@ class TestCount:
             "water days vs water year",
         ],
     )
-    def test_seconds_within_offset_months(self, self_props: Properties, other_props: Properties, expected: int) -> None:
+    def test_seconds_within_offset_months(self, self_props: Properties, other_props: Properties, aligned: bool) -> None:
         """Test that a seconds period aligns to an offset months period only if the offsets differ by a whole
         number of self-intervals.
 
         The offsets are held in microseconds, so the multipliers must be compared in microseconds too - a
         seconds-unit comparison here wrongly reports a 30-minute offset as aligned to an hourly period.
+
+        A months period never yields a constant count, so count() is None either way.
         """
-        assert self_props.count(other_props) == expected
+        assert self_props.is_subperiod_of(other_props) is aligned
+        assert self_props.count(other_props) is None
 
     def test_months_within_months(self) -> None:
         """Test that a month fits 12 times in a year."""
         assert months(1).count(months(12)) == 12
+        assert months(1).is_subperiod_of(months(12))
 
     def test_second_cannot_fit_evenly_in_a_microsecond_period(self) -> None:
         """Test that a whole-second period never divides a (sub-second-step) microsecond period."""
         two_seconds_as_micro = micros(2_000_000)
-        assert seconds(1).count(two_seconds_as_micro) == -1
+        assert seconds(1).count(two_seconds_as_micro) is None
+        assert not seconds(1).is_subperiod_of(two_seconds_as_micro)
 
     @pytest.mark.parametrize(
         "other",
@@ -313,11 +325,14 @@ class TestCount:
     )
     def test_months_never_fit_evenly_in_a_time_based_period(self, other: Properties) -> None:
         """Test that a month has no fixed length, so it can't tile a fixed-length period."""
-        assert months(1).count(other) == -1
+        assert months(1).count(other) is None
+        assert not months(1).is_subperiod_of(other)
 
     def test_zero_self_offset_but_unaligned_other_offset_is_unaligned(self) -> None:
         """Test that `self` has no offset; `other`'s offset isn't a whole number of self-intervals."""
-        assert seconds(3_600).count(seconds(86_400, microsecond_offset=1_000_000)) == -1
+        other = seconds(86_400, microsecond_offset=1_000_000)
+        assert seconds(3_600).count(other) is None
+        assert not seconds(3_600).is_subperiod_of(other)
 
 
 class TestPolarsStrings:
@@ -386,108 +401,6 @@ class TestStrAndRepr:
         assert repr(seconds(1).with_tzinfo(_NoOffsetTZ())).endswith("[]")
 
 
-class TestNaivePrecisionSelection:
-    @pytest.mark.parametrize(
-        "props,expected",
-        [
-            (Properties.of_months(12), Precision.YEAR),
-            (Properties.of_months(1), Precision.MONTH),
-            (Properties.of_seconds(86_400), Precision.DAY),
-            (Properties.of_seconds(3_600), Precision.HOUR),
-            (Properties.of_seconds(900), Precision.MINUTE),
-            (Properties.of_seconds(30), Precision.SECOND),
-            (micros(2_000_000), Precision.SECOND),
-            (micros(1_500_000), Precision.MILLISECOND),
-            (Properties.of_microseconds(1), Precision.MICROSECOND),
-        ],
-        ids=[
-            "year",
-            "month",
-            "day",
-            "hour",
-            "minute",
-            "second",
-            "whole-second us step",
-            "millisecond us step",
-            "microsecond us step",
-        ],
-    )
-    def test_multiplier_driven(self, props: Properties, expected: Precision) -> None:
-        """Test that with no offset, the multiplier alone decides the precision."""
-        assert props._naive_precision() == expected
-
-    @pytest.mark.parametrize(
-        "props,expected",
-        [
-            (seconds(10, microsecond_offset=1), Precision.MICROSECOND),
-            (seconds(10, microsecond_offset=500_000), Precision.MILLISECOND),
-            (micros(1_000_000, microsecond_offset=1_000), Precision.MILLISECOND),
-            (months(12, microsecond_offset=5_000_000), Precision.SECOND),
-            (months(12, microsecond_offset=5 * 60 * 1_000_000), Precision.MINUTE),
-            (months(12, microsecond_offset=5 * 3_600 * 1_000_000), Precision.HOUR),
-            (months(12, microsecond_offset=2 * 86_400 * 1_000_000), Precision.DAY),
-        ],
-        ids=[
-            "sub-ms offset",
-            "ms offset",
-            "ms offset on us step",
-            "s offset",
-            "min offset",
-            "hour offset",
-            "day offset",
-        ],
-    )
-    def test_offset_driven(self, props: Properties, expected: Precision) -> None:
-        """Test that an offset widens the precision past what the multiplier alone would need."""
-        assert props._naive_precision() == expected
-
-
-class TestAwarePrecisionSelection:
-    @pytest.mark.parametrize(
-        "props,expected",
-        [
-            (Properties.of_months(12), Precision.HOUR),
-            (Properties.of_months(1), Precision.HOUR),
-            (Properties.of_seconds(86_400), Precision.HOUR),
-            (Properties.of_seconds(3_600), Precision.HOUR),
-            (Properties.of_seconds(900), Precision.MINUTE),
-            (seconds(90), Precision.SECOND),
-            (micros(1), Precision.MICROSECOND),
-            (micros(500_000), Precision.MILLISECOND),
-            (micros(2_000_000), Precision.SECOND),
-        ],
-        ids=[
-            "year -> HOUR",
-            "month -> HOUR",
-            "day -> HOUR",
-            "hour",
-            "minute",
-            "non-whole-minute seconds",
-            "sub-ms us step",
-            "sub-second us step",
-            "whole-second us step",
-        ],
-    )
-    def test_multiplier_driven(self, props: Properties, expected: Precision) -> None:
-        """Test that the multiplier decides the precision, floored at HOUR."""
-        assert props._aware_precision() == expected
-
-    @pytest.mark.parametrize(
-        "props,expected",
-        [
-            (seconds(10, microsecond_offset=500_001), Precision.MICROSECOND),
-            (seconds(10, microsecond_offset=500_000), Precision.MILLISECOND),
-            (months(12, microsecond_offset=5_000_000), Precision.SECOND),
-            (months(12, microsecond_offset=5 * 60 * 1_000_000), Precision.MINUTE),
-            (months(12, microsecond_offset=5 * 3_600 * 1_000_000), Precision.HOUR),
-        ],
-        ids=["sub-ms offset", "ms offset", "s offset", "min offset", "hour offset"],
-    )
-    def test_offset_driven(self, props: Properties, expected: Precision) -> None:
-        """Test that an offset widens the precision, still floored at HOUR."""
-        assert props._aware_precision() == expected
-
-
 class TestStepDispatchGuards:
     @pytest.mark.parametrize(
         "call",
@@ -498,8 +411,6 @@ class TestStepDispatchGuards:
             lambda p: p.normalise_offsets(),
             lambda p: p.pl_interval(),
             lambda p: p.is_epoch_agnostic(),
-            lambda p: p._naive_precision(),
-            lambda p: p._aware_precision(),
         ],
         ids=[
             "get_iso8601",
@@ -508,12 +419,10 @@ class TestStepDispatchGuards:
             "normalise_offsets",
             "pl_interval",
             "is_epoch_agnostic",
-            "_naive_precision",
-            "_aware_precision",
         ],
     )
     def test_bad_step_is_rejected(self, call) -> None:
         """Test that each step-dispatch method raises when a corrupt Properties, with a step forced past
         __post_init__, reaches its final branch."""
-        with pytest.raises((PeriodValidationError, PeriodConfigError)):
+        with pytest.raises(PeriodValidationError):
             call(_mutated(seconds(10), step=999))

@@ -263,6 +263,47 @@ class TestOfDateAndDuration:
         assert p.ordinal(expected_start) == 0
 
 
+class TestTimeDesignatorIsRequired:
+    """A time component needs its "T", exactly as ISO 8601 requires, so that "M" is never ambiguous."""
+
+    @pytest.mark.parametrize(
+        "text",
+        ["P30S", "P1H", "P1D1M", "P1Y+9M9H", "P1D+9H", "P1Y+1YT1M+T1M"],
+        ids=[
+            "seconds without T",
+            "hours without T",
+            "days then minutes without T",
+            "offset hours without T",
+            "offset hours without T on a day period",
+            "two offsets",
+        ],
+    )
+    def test_missing_designator_is_rejected(self, text: str) -> None:
+        """Test that a time component with no preceding "T" does not parse."""
+        with pytest.raises(PeriodParsingError):
+            Period.of(text)
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("PT30S", "PT30S"),
+            ("PT1H", "PT1H"),
+            ("P1DT1M", "P1DT1M"),
+            ("P1Y+9MT9H", "P1Y+9MT9H"),
+            ("P1D+T9H", "P1D+T9H"),
+        ],
+        ids=["seconds", "hours", "days then minutes", "offset months and hours", "offset hours"],
+    )
+    def test_designator_present_parses(self, text: str, expected: str) -> None:
+        """Test that the same strings parse once the "T" is supplied."""
+        assert str(Period.of(text)) == expected
+
+    def test_month_before_the_designator_is_months(self) -> None:
+        """Test that "M" in the date part is months, and in the time part is minutes."""
+        assert str(Period.of("P1Y+1Y1M")) == "P1Y+1M"  # 13 months, normalised to 1
+        assert str(Period.of("P1Y+1YT1M")) == "P1Y+T1M"  # 12 months normalises away, 1 minute remains
+
+
 class TestOf:
     @pytest.mark.parametrize(
         "text",

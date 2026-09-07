@@ -434,20 +434,26 @@ class TestCount:
             (Period.of_hours(1), Period.of_days(1), 24),
             (Period.of_seconds(1), Period.of_hours(1), 3_600),
             (Period.of_months(1), Period.of_years(1), 12),
-            (Period.of_days(1), Period.of_months(1), 0),
-            (Period.of_hours(1), Period.of_seconds(1), -1),
         ],
-        ids=[
-            "hours in a day",
-            "seconds in an hour",
-            "months in a year",
-            "days in a month (aligned, no count)",
-            "larger within smaller (unaligned)",
-        ],
+        ids=["hours in a day", "seconds in an hour", "months in a year"],
     )
-    def test_counts_and_sentinels(self, inner: Period, outer: Period, expected: int) -> None:
-        """Test that the nested count, or 0/-1 when there is no constant count / no alignment."""
+    def test_constant_counts(self, inner: Period, outer: Period, expected: int) -> None:
+        """Test that a constant nested count is returned as that number."""
         assert inner.count(outer) == expected
+
+    @pytest.mark.parametrize(
+        "inner,outer,aligned",
+        [
+            (Period.of_days(1), Period.of_months(1), True),
+            (Period.of_hours(1), Period.of_seconds(1), False),
+        ],
+        ids=["days in a month (aligned, count varies)", "larger within smaller (unaligned)"],
+    )
+    def test_no_constant_count_is_none(self, inner: Period, outer: Period, aligned: bool) -> None:
+        """Test that both the "aligned but varying" and "unaligned" cases return None, and that
+        is_subperiod_of() is what tells them apart."""
+        assert inner.count(outer) is None
+        assert inner.is_subperiod_of(outer) is aligned
 
     def test_matching_offsets_still_nest(self) -> None:
         """Test that two periods sharing the same offset nest exactly as their bare forms do."""
@@ -457,7 +463,9 @@ class TestCount:
 
     def test_mismatched_offset_breaks_alignment(self) -> None:
         """Test that an offset on only one side makes the periods unaligned."""
-        assert Period.of_hours(1).with_minute_offset(1).count(Period.of_days(1)) == -1
+        inner = Period.of_hours(1).with_minute_offset(1)
+        assert inner.count(Period.of_days(1)) is None
+        assert not inner.is_subperiod_of(Period.of_days(1))
 
     def test_offsets_differing_by_a_whole_inner_period_still_align(self) -> None:
         """Test that the offsets need not be equal, only congruent modulo the inner period. A 15-minute period offset by
@@ -473,12 +481,14 @@ class TestCount:
         through one of the inner intervals."""
         inner = Period.of_minutes(15).with_minute_offset(5)
         outer = Period.of_hours(1).with_minute_offset(12)
-        assert inner.count(outer) == -1
+        assert inner.count(outer) is None
         assert not inner.is_subperiod_of(outer)
 
     def test_different_timezones_are_unaligned(self) -> None:
         """Test that a naive period and a UTC period never align."""
-        assert Period.of_hours(1).count(Period.of_hours(1).with_tzinfo(dt.UTC)) == -1
+        aware = Period.of_hours(1).with_tzinfo(dt.UTC)
+        assert Period.of_hours(1).count(aware) is None
+        assert not Period.of_hours(1).is_subperiod_of(aware)
 
     def test_a_period_counts_as_one_of_itself(self) -> None:
         """Test that count() of a period with itself is 1, offsets included."""
@@ -660,106 +670,6 @@ class TestBasePeriod:
     def test_derived_period_base_is_the_plain_period(self, period: Period) -> None:
         """Test that an offset or shifted period's base is the plain 1-day period."""
         assert period.base_period() == Period.of_days(1)
-
-
-class TestNaiveFormatter:
-    @pytest.mark.parametrize(
-        "period,datetime_obj,expected",
-        [
-            (Period.of_years(1), dt.datetime(2024, 3, 1), "2024"),
-            (Period.of_months(1), dt.datetime(2024, 3, 1), "2024-03"),
-            (Period.of_days(1), dt.datetime(2024, 3, 1), "2024-03-01"),
-            (Period.of_hours(1), dt.datetime(2024, 3, 1, 5), "2024-03-01T05"),
-            (Period.of_minutes(15), dt.datetime(2024, 3, 1, 5, 15), "2024-03-01T05:15"),
-            (Period.of_seconds(30), dt.datetime(2024, 3, 1, 5, 15, 30), "2024-03-01T05:15:30"),
-            (Period.of_microseconds(500_000), dt.datetime(2024, 3, 1, 5, 15, 30, 500_000), "2024-03-01T05:15:30.500"),
-            (Period.of_microseconds(1), dt.datetime(2024, 3, 1, 5, 15, 30, 1), "2024-03-01T05:15:30.000001"),
-        ],
-        ids=["year", "month", "day", "hour", "minute", "second", "millisecond", "microsecond"],
-    )
-    def test_precision_from_multiplier(self, period: Period, datetime_obj: dt.datetime, expected: str) -> None:
-        """Test that the multiplier alone selects the precision when there is no offset."""
-        assert period.format(datetime_obj) == expected
-
-    @pytest.mark.parametrize(
-        "period,datetime_obj,expected",
-        [
-            (Period.of_days(1).with_hour_offset(9), dt.datetime(2024, 3, 1, 9), "2024-03-01T09"),
-            (
-                Period.of_seconds(10).with_microsecond_offset(500_000),
-                dt.datetime(2024, 3, 1, 0, 0, 0, 500_000),
-                "2024-03-01T00:00:00.500",
-            ),
-            (
-                Period.of_seconds(10).with_microsecond_offset(500_001),
-                dt.datetime(2024, 3, 1, 0, 0, 0, 500_001),
-                "2024-03-01T00:00:00.500001",
-            ),
-        ],
-        ids=["hour offset forces HOUR", "sub-second offset forces MILLISECOND", "odd offset forces MICROSECOND"],
-    )
-    def test_offset_forces_finer_precision(self, period: Period, datetime_obj: dt.datetime, expected: str) -> None:
-        """Test that an offset widens the precision beyond what the multiplier needs."""
-        assert period.format(datetime_obj) == expected
-
-
-class TestAwareFormatter:
-    @pytest.mark.parametrize(
-        "period,datetime_obj,expected",
-        [
-            (Period.of_years(1), dt.datetime(2024, 1, 1, tzinfo=dt.UTC), "2024-01-01T00Z"),
-            (Period.of_days(1), dt.datetime(2024, 3, 1, tzinfo=dt.UTC), "2024-03-01T00Z"),
-            (Period.of_hours(1), dt.datetime(2024, 3, 1, 5, tzinfo=dt.UTC), "2024-03-01T05Z"),
-            (Period.of_minutes(15), dt.datetime(2024, 3, 1, 5, 15, tzinfo=dt.UTC), "2024-03-01T05:15Z"),
-            (Period.of_seconds(30), dt.datetime(2024, 3, 1, 5, 15, 30, tzinfo=dt.UTC), "2024-03-01T05:15:30Z"),
-        ],
-        ids=["year -> HOUR", "day -> HOUR", "hour", "minute", "second"],
-    )
-    def test_precision_floored_at_hour(self, period: Period, datetime_obj: dt.datetime, expected: str) -> None:
-        """Test that Sub-hour multipliers keep their precision; coarser ones are floored to HOUR."""
-        assert period.with_tzinfo(dt.UTC).format(datetime_obj) == expected
-
-    def test_non_utc_offset_is_rendered(self) -> None:
-        """Test that a +05:30 timezone appears as a trailing offset."""
-        tz = dt.timezone(dt.timedelta(hours=5, minutes=30))
-        p = Period.of_hours(1).with_tzinfo(tz)
-        assert p.format(dt.datetime(2024, 3, 1, 5, tzinfo=tz)) == "2024-03-01T05+05:30"
-
-
-class TestFormat:
-    @pytest.mark.parametrize(
-        "period,expected",
-        [
-            (Period.of_days(1), "2024-03-01"),
-            (Period.of_minutes(15), "2024-03-01T09:47"),
-            (Period.of_days(1).with_tzinfo(dt.UTC), "2024-03-01T09Z"),
-            (Period.of_days(1).with_hour_offset(9), "2024-03-01T09"),
-        ],
-        ids=["day", "15 minutes", "tz-aware", "offset forces HOUR"],
-    )
-    def test_agrees_with_the_reusable_formatter(self, period: Period, expected: str) -> None:
-        """Test that the one-off and the reusable form are two doors to the same rendering."""
-        datetime_obj = dt.datetime(2024, 3, 1, 9, 47, tzinfo=period.tzinfo)
-        assert period.format(datetime_obj) == expected
-        assert period.formatter()(datetime_obj) == expected
-
-    def test_one_formatter_serves_many_datetimes(self) -> None:
-        """Test that the reusable function gives the same answers as repeated format() calls."""
-        period = Period.of_hours(1)
-        moments = [dt.datetime(2024, 3, 1) + dt.timedelta(hours=n) for n in range(30)]
-        formatter = period.formatter()
-        assert [formatter(m) for m in moments] == [period.format(m) for m in moments]
-
-
-class TestFormatterDispatch:
-    def test_naive_period_renders_without_a_timezone(self) -> None:
-        """Test that a naive period formats without a timezone suffix."""
-        assert Period.of_days(1).formatter()(dt.datetime(2024, 3, 1)) == "2024-03-01"
-
-    def test_aware_period_renders_with_its_timezone(self) -> None:
-        """Test that a tz-aware period formats with a timezone suffix and at least HOUR precision."""
-        p = Period.of_days(1).with_tzinfo(dt.UTC)
-        assert p.formatter()(dt.datetime(2024, 3, 1, tzinfo=dt.UTC)) == "2024-03-01T00Z"
 
 
 class TestConstructorValidation:

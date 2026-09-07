@@ -1,5 +1,9 @@
 """Helpers for building ISO 8601 duration strings and the regex fragment used to parse ISO 8601 durations."""
 
+import datetime as dt
+
+from isoperiod.exceptions import PeriodParsingError
+
 
 def period_regex(prefix: str) -> str:
     """Return a regular expression string for matching an ISO 8601 duration (but without the initial "P" character)
@@ -14,7 +18,7 @@ def period_regex(prefix: str) -> str:
         rf"(?:(?P<{prefix}_years>\d+)[Yy])?"
         rf"(?:(?P<{prefix}_months>\d+)[Mm])?"
         rf"(?:(?P<{prefix}_days>\d+)[Dd])?"
-        r"(?:[Tt]?"
+        r"(?:[Tt]"
         rf"(?:(?P<{prefix}_hours>\d+)[Hh])?"
         rf"(?:(?P<{prefix}_minutes>\d+)[Mm])?"
         rf"(?:(?P<{prefix}_seconds>\d+)"
@@ -162,3 +166,26 @@ def month_period_name(months: int) -> str:
             month_period_name(18) -> "P1Y6M"
     """
     return "".join(append_month_elems(["P"], months))
+
+
+def format_tzdelta(delta: dt.timedelta) -> str:
+    """Convert a timedelta which represents a timezone to a string that represents that timezone
+
+    Args:
+        delta: The timedelta
+
+    Returns:
+        A string that can be used to represent a timezone in an ISO 8601 format string
+
+    Examples:
+        .. code-block:: text
+
+            timedelta(0)                    -> "Z"
+            timedelta(hours=5, minutes=30)  -> "+05:30"
+            timedelta(hours=-5)             -> "-05:00"
+    """
+    try:
+        name = dt.timezone(delta).tzname(None)
+    except ValueError as err:
+        raise PeriodParsingError(f"Illegal tz delta: {delta}. Amount of time must be less than 1 day.") from err
+    return name.removeprefix("UTC") or "Z"

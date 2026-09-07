@@ -14,7 +14,8 @@ _RE_TRUNCATED_YEAR_MONTH = re.compile(r"\d{4}-\d{2}")
 # A regular expression Pattern used to parse an ISO 8601 duration, such as P1Y, P7M, P5Y3M, P8D9H1M4S, etc.
 _RE_PERIOD = re.compile(r"^" r"[Pp]" + period_regex("period") + r"$")
 
-# A regular expression Pattern used to parse our custom extended ISO 8601 duration string, such as P2Y+3M, P1Y+9M9H.
+# A regular expression Pattern used to parse our custom extended ISO 8601 duration string, such as P2Y+3M,
+# P1Y+9MT9H.
 # This accounts for offsets on the period.
 _RE_PERIOD_OFFSET = re.compile(r"^" r"[Pp]" + period_regex("period") + r"\+" + period_regex("offset") + r"$")
 

@@ -1,10 +1,9 @@
-"""The Period class hierarchy: the abstract Period base class, its concrete implementations, and the factory
+"""The Period class: the abstract Period base class, its concrete implementations, and the factory
 functions that choose the right implementation for a given Properties object.
 """
 
 import datetime as dt
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import replace
 from typing import Any, override
 
@@ -39,6 +38,8 @@ class Period(ABC):
     Examples:
         .. code-block:: python
 
+            from datetime import datetime, timedelta
+
             p1h = Period.of_hours(1)
             d = datetime(2024, 3, 1, 9, 47)
 
@@ -64,6 +65,8 @@ class Period(ABC):
         from 09:00, or a business year starting in October:
 
         .. code-block:: python
+
+            from datetime import datetime
 
             water_day = Period.of_days(1).with_hour_offset(9)     # days running 09:00 -> 09:00
             d = datetime(2024, 3, 15, 7, 30)
@@ -101,6 +104,8 @@ class Period(ABC):
     returns a new Period rather than mutating the original:
 
     .. code-block:: python
+
+        from datetime import timezone
 
         Period.of("PT15M")                             # every 15 minutes
         Period.of_days(1).with_hour_offset(9)          # every day, starting at 09:00
@@ -165,7 +170,7 @@ class Period(ABC):
         Both plain and extended ("+offset") ISO 8601 duration strings are supported; the extended form is tried first.
 
         Args:
-            duration: An ISO 8601 duration string e.g. "P1Y" or "PT15M", or with offset e.g. "P1D+9H"
+            duration: An ISO 8601 duration string e.g. "P1Y" or "PT15M", or with offset e.g. "P1D+T9H"
 
         Returns:
             A Period object defined by the supplied (extended) ISO 8601 duration string
@@ -440,51 +445,6 @@ class Period(ABC):
         """
         return self._properties.is_epoch_agnostic()
 
-    def format(self, datetime_obj: dt.datetime) -> str:
-        """Format a single datetime to the precision this period needs.
-
-        How much of a datetime is worth printing is a property of the period, not of the datetime: a one-day
-        period needs only the date, a 15-minute period needs the minutes, and a period with a sub-second offset
-        needs the microseconds. This picks that precision and renders accordingly.
-
-        To format many datetimes, use :meth:`formatter` instead - it works out the precision once rather than
-        once per datetime.
-
-        Args:
-            datetime_obj: The datetime object to format
-
-        Returns:
-            The ISO 8601 string representation of the datetime
-
-        Examples:
-            .. code-block:: python
-
-                assert Period.of_days(1).format(datetime(2024, 3, 1, 9, 47)) == "2024-03-01"
-                assert Period.of_minutes(15).format(datetime(2024, 3, 1, 9, 47)) == "2024-03-01T09:47"
-        """
-        return self.formatter()(datetime_obj)
-
-    def formatter(self) -> Callable[[dt.datetime], str]:
-        """Return a reusable function that formats datetimes to the precision this period needs.
-
-        The precision is worked out once, here, and captured by the returned function, so formatting a large
-        number of datetimes is cheaper than calling :meth:`format` for each one. Prefer :meth:`format` for a single
-        datetime, and this for a loop.
-
-        Examples:
-            .. code-block:: python
-
-                fmt = period.formatter()
-                lines = [fmt(d) for d in timestamps]
-
-        Returns:
-            A function that takes a single datetime argument and returns a string
-        """
-        properties = self._properties
-        if properties.tzinfo is None:
-            return properties.get_naive_formatter()
-        return properties.get_aware_formatter()
-
     @abstractmethod
     def ordinal(self, datetime_obj: dt.datetime) -> int:
         """Return the ordinal of the interval that contains the supplied datetime.
@@ -506,6 +466,8 @@ class Period(ABC):
         Examples:
             .. code-block:: python
 
+                from datetime import datetime
+
                 p1m = Period.of_months(1)
                 d = datetime(2024, 3, 15, 9, 47)
 
@@ -525,13 +487,19 @@ class Period(ABC):
 
             .. code-block:: python
 
-                n = Period.of_months(1).ordinal(datetime(2024, 3, 15))  # 24290 (months)
-                Period.of_days(1).datetime(n)                           # datetime(67, 7, 3) - nonsense
+                from datetime import datetime
+
+                n = Period.of_months(1).ordinal(datetime(2024, 3, 15))
+                assert n == 24_290  # months, not days
+
+                assert Period.of_days(1).datetime(n) == datetime(67, 7, 3)  # nonsense, silently
         """
 
     @abstractmethod
     def datetime(self, ordinal: int) -> dt.datetime:
-        """Return the datetime at which the interval with the supplied ordinal starts (the inverse of :meth:`ordinal`).
+        """Return the datetime at which the interval with the supplied ordinal starts.
+
+        The inverse of :meth:`ordinal`.
 
         Args:
             ordinal: The integer ordinal, as produced by this same Period's :meth:`ordinal`
@@ -546,10 +514,12 @@ class Period(ABC):
         Examples:
             .. code-block:: python
 
+                from datetime import datetime
+
                 p1h = Period.of_hours(1)
                 n = p1h.ordinal(datetime(2024, 3, 1, 9, 47))
 
-                assert p1h.datetime(n) == datetime(2024, 3, 1, 9, 0)      # start of the interval
+                assert p1h.datetime(n) == datetime(2024, 3, 1, 9, 0)       # start of the interval
                 assert p1h.datetime(n + 1) == datetime(2024, 3, 1, 10, 0)  # start of the next one
         """
 
@@ -569,14 +539,16 @@ class Period(ABC):
         Examples:
             .. code-block:: python
 
+                from datetime import datetime
+
                 p1h = Period.of_hours(1)
-                assert p1h.is_aligned(datetime(2024, 3, 1, 9, 0))
-                assert not p1h.is_aligned(datetime(2024, 3, 1, 9, 47))
+                assert p1h.is_aligned(datetime(2024, 3, 1, 9, 0)) == True
+                assert p1h.is_aligned(datetime(2024, 3, 1, 9, 47)) == False
 
                 # An offset moves every boundary, and with it what counts as aligned.
                 water_day = Period.of_days(1).with_hour_offset(9)
-                assert water_day.is_aligned(datetime(2024, 3, 1, 9, 0))
-                assert not water_day.is_aligned(datetime(2024, 3, 1, 0, 0))
+                assert water_day.is_aligned(datetime(2024, 3, 1, 9, 0)) == True
+                assert water_day.is_aligned(datetime(2024, 3, 1, 0, 0)) == False
         """
         ordinal = self.ordinal(datetime_obj)
         datetime_obj2 = self.datetime(ordinal)
@@ -588,8 +560,7 @@ class Period(ABC):
         A "base period" is one whose intervals fall on the natural boundaries of its unit, with un-shifted
         ordinals - exactly what the unit factories such as :meth:`of_days` and :meth:`of_months` produce.
 
-        :class:`OffsetPeriod` and :class:`ShiftedPeriod` override this method to unwrap the period they decorate,
-        so an offset or origin is discarded.
+        A period carrying an offset or an origin unwraps the period beneath it, so both are discarded.
 
         To clear only one of the two, use :meth:`without_offset` or :meth:`without_ordinal_shift`.
 
@@ -598,6 +569,8 @@ class Period(ABC):
 
         Examples:
             .. code-block:: python
+
+                from datetime import datetime
 
                 assert Period.of_days(1).base_period() == Period.of_days(1)
 
@@ -741,8 +714,13 @@ class Period(ABC):
 
         .. code-block:: python
 
-            period.ordinal(origin_date_time) == 0
-            period.is_aligned(origin_date_time) == True
+            from datetime import datetime
+
+            origin_date_time = datetime(2024, 1, 1)
+            period = Period.of_days(7).with_origin(origin_date_time)
+
+            assert period.ordinal(origin_date_time) == 0
+            assert period.is_aligned(origin_date_time) == True
 
         Args:
             origin_date_time: The datetime to become ordinal 0, and the start of an interval
@@ -775,34 +753,31 @@ class Period(ABC):
             .with_ordinal_shift(0 - origin_ordinal)
         )
 
-    def count(self, other: "Period") -> int:
-        """Return how many intervals of this period fit into each interval of `other`.
+    def count(self, other: "Period") -> int | None:
+        """Return how many intervals of this period fit into each interval of `other`, or None if there is no
+        constant number.
 
         A count exists when this period's intervals fit inside `other`'s exactly: one of them starts where the
         interval of `other` starts, another ends where it ends, and no part-intervals fall in between. That
         whole number is returned, and it is the same for every interval across the timeline - e.g. twenty-four hours
         in a day, twelve months in a year.
 
-        Two situations have no such number, and each reports itself with a dedicated value rather than
-        raising:
+        Two situations have no such number, and both return None:
 
-        * **-1 = Not aligned.** Intervals of this period straddle the boundaries of `other`, so no interval of
+        * **Aligned, but not constant.** The boundaries line up, but the count differs between intervals. Days
+          divide every month cleanly, yet months may have 28 to 31 days, so there is no single answer.
+        * **Not aligned.** Intervals of this period straddle the boundaries of `other`, so no interval of
           `other` contains a whole number of them. This also covers this period simply being the larger of the
-          two. Returns -1.
-        * **0 = Aligned, but not constant.** The boundaries line up, but the count differs between intervals. Days
-          divide every month cleanly, yet months may have 28 to 31 days, so there is no single answer. Returns 0.
+          two.
+
+        Use :meth:`is_subperiod_of` to tell the two apart: it is True in the first case and False in the second.
 
         Args:
             other: The period whose intervals this period's intervals are counted within
 
         Returns:
-            The number of intervals of this period per interval of `other`:
-
-            .. code-block:: text
-
-                n>0  each interval of "other" holds exactly n intervals of this period
-                 0   aligned, but the count is not constant
-                -1   not aligned, or this period is the larger of the two
+            The number of intervals of this period per interval of `other`, the same for every interval on the
+            timeline; or None if no such number exists
 
         Examples:
             .. code-block:: python
@@ -817,22 +792,23 @@ class Period(ABC):
                 assert p1m.count(p1y) == 12
 
                 # Aligned, but a month is 28-31 days, so no constant count exists.
-                assert p1d.count(p1m) == 0
+                assert p1d.count(p1m) is None
+                assert p1d.is_subperiod_of(p1m) == True
 
                 # A larger period never fits inside a smaller one.
-                assert p1d.count(p1h) == -1
+                assert p1d.count(p1h) is None
+                assert p1d.is_subperiod_of(p1h) == False
 
                 # An offset on one of them breaks the alignment ...
                 p1h_1m = Period.of_hours(1).with_minute_offset(1)
-                assert p1h_1m.count(p1d) == -1
+                assert p1h_1m.count(p1d) is None
 
                 # ... but not if both carry the same offset.
                 p1d_1m = Period.of_days(1).with_minute_offset(1)
                 assert p1h_1m.count(p1d_1m) == 24
 
         See also:
-            :meth:`is_subperiod_of`, which is the sign test on this method: a period is a subperiod of another
-            exactly when the count is not -1.
+            :meth:`is_subperiod_of`, for whether the intervals nest at all.
         """
         return self._properties.count(other._properties)
 
@@ -877,7 +853,7 @@ class Period(ABC):
                 p1d_1m = Period.of_days(1).with_minute_offset(1)
                 assert p1h_1m.is_subperiod_of(p1d_1m) == True
         """
-        return self.count(other) >= 0
+        return self._properties.is_subperiod_of(other._properties)
 
     def _validate_base_period(self, properties: Properties, expected_step: int) -> None:
         """Validate the properties shared by every concrete "base period" subclass (i.e. every Period with no date/time
