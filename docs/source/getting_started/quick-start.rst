@@ -50,6 +50,12 @@ timestamp onto the grid:
     assert p15min.datetime(n) == datetime(2024, 3, 15, 9, 45)      # this interval
     assert p15min.datetime(n + 1) == datetime(2024, 3, 15, 10, 0)  # the next one
 
+When only the boundary is wanted, :meth:`~isoperiod.Period.floor` is that round trip in one call:
+
+.. code-block:: python
+
+    assert p15min.floor(reading) == datetime(2024, 3, 15, 9, 45)
+
 It works just as well for calendar units, which no ``timedelta`` can express:
 
 .. code-block:: python

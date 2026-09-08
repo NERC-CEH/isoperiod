@@ -67,6 +67,9 @@ Methods
 
     ~Period.ordinal
     ~Period.datetime
+    ~Period.floor
+    ~Period.interval
+    ~Period.range
     ~Period.is_aligned
 
 .. rubric:: Builders

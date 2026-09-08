@@ -238,6 +238,72 @@ class TestOrdering:
         periods = [Period.of_days(7), Period.of_hours(1), Period.of_minutes(1)]
         assert sorted(periods) == [Period.of_minutes(1), Period.of_hours(1), Period.of_days(7)]
 
+    @pytest.mark.parametrize(
+        "smaller,larger",
+        [
+            (Period.of("PT1S"), Period.of("PT1.5S")),
+            (Period.of("PT1.5S"), Period.of("PT2S")),
+            (Period.of("PT0.5S"), Period.of("PT1S")),
+            (Period.of_days(1), Period.of_months(1)),
+            (Period.of_months(1), Period.of_days(100)),
+            (Period.of_days(100), Period.of_years(1)),
+            (Period.of_months(11), Period.of_years(1)),
+            (Period.of("PT0.000001S"), Period.of_years(1)),
+        ],
+        ids=[
+            "whole second before fractional",
+            "fractional before larger whole",
+            "sub-second before whole second",
+            "day before month",
+            "month before 100 days",
+            "100 days before year",
+            "11 months before year",
+            "microsecond before year",
+        ],
+    )
+    def test_ordering_holds_across_steps(self, smaller: Period, larger: Period) -> None:
+        """Test that ordering follows length, not the step/multiplier field order.
+
+        Every pair here crosses a step boundary, where sorting by (step, multiplier) - as a dataclass with
+        order=True does - gets the answer backwards.
+        """
+        assert smaller < larger
+        assert larger > smaller
+        assert not (larger < smaller)
+
+    def test_sorting_is_by_length_across_calendar_and_fixed_periods(self) -> None:
+        """Test that a list mixing sub-second, whole-second and calendar periods sorts shortest first."""
+        periods = [Period.of_days(100), Period.of("PT1.5S"), Period.of_seconds(1), Period.of_years(1)]
+        assert sorted(periods) == [
+            Period.of_seconds(1),
+            Period.of("PT1.5S"),
+            Period.of_days(100),
+            Period.of_years(1),
+        ]
+
+    def test_periods_of_equal_length_still_order_totally(self) -> None:
+        """Test that periods sharing a nominal length but differing elsewhere still sort deterministically."""
+        p1m = Period.of_months(1)
+        offset = Period.of_months(1).with_month_offset(0).with_second_offset(1)
+        assert sorted([offset, p1m]) == [p1m, offset]
+        assert (p1m < offset) != (offset < p1m)
+
+    def test_ordering_a_month_against_its_mean_length_in_seconds_is_total(self) -> None:
+        """Test that a month and the fixed period of identical nominal length still compare one way only."""
+        p1m = Period.of_months(1)
+        mean = Period.of_seconds(2_629_746)
+        assert p1m != mean
+        assert (p1m < mean) != (mean < p1m)
+
+    def test_mismatched_timezones_raise_rather_than_ordering(self) -> None:
+        """Test that two otherwise-identical periods on different clocks refuse to order (as datetimes do)."""
+        with pytest.raises(TypeError):
+            _ = Period.of_hours(1).with_tzinfo(dt.UTC) < Period.of_hours(1)
+
+    def test_differing_length_orders_without_consulting_the_timezone(self) -> None:
+        """Test that a mismatched timezone is only reached as a tie-break, so unequal lengths still sort."""
+        assert Period.of_hours(1).with_tzinfo(dt.UTC) < Period.of_days(1)
+
     @pytest.mark.parametrize("op", ["__lt__", "__le__", "__gt__", "__ge__"], ids=["lt", "le", "gt", "ge"])
     def test_ordering_against_non_period_returns_notimplemented(self, op: str) -> None:
         """Test that each ordering dunder returns NotImplemented for a non-Period operand."""
@@ -247,6 +313,207 @@ class TestOrdering:
         """Test that because the dunders return NotImplemented, sorting a mixed list raises."""
         with pytest.raises(TypeError):
             sorted([Period.of_days(1), "not a period"])
+
+
+class TestFloor:
+    @pytest.mark.parametrize(
+        "period,expected",
+        [
+            (Period.of_minutes(15), dt.datetime(2024, 3, 15, 9, 45)),
+            (Period.of_hours(1), dt.datetime(2024, 3, 15, 9, 0)),
+            (Period.of_days(1), dt.datetime(2024, 3, 15)),
+            (Period.of_months(1), dt.datetime(2024, 3, 1)),
+            (Period.of_years(1), dt.datetime(2024, 1, 1)),
+            (Period.of("PT0.04S"), dt.datetime(2024, 3, 15, 9, 47, 30, 480_000)),
+        ],
+        ids=["15 min", "hour", "day", "month", "year", "40 ms"],
+    )
+    def test_floors_to_the_start_of_the_containing_interval(self, period: Period, expected: dt.datetime) -> None:
+        """Test that floor() returns the first instant of the interval holding the datetime."""
+        assert period.floor(dt.datetime(2024, 3, 15, 9, 47, 30, 500_000)) == expected
+
+    def test_floor_matches_the_ordinal_datetime_round_trip(self) -> None:
+        """Test that floor() is exactly datetime(ordinal(d)), for every kind of period."""
+        moment = dt.datetime(2024, 3, 15, 9, 47, 30, 500_000)
+        for period in (
+            Period.of("PT15M"),
+            Period.of("P1M"),
+            Period.of("P1D+T9H"),
+            Period.of("P1Y+9MT9H"),
+            Period.of("2024-01-01/P7D"),
+        ):
+            assert period.floor(moment) == period.datetime(period.ordinal(moment))
+
+    def test_floor_respects_an_offset(self) -> None:
+        """Test that an offset period floors to its own shifted boundary, not the natural one."""
+        assert Period.of("P1D+T9H").floor(dt.datetime(2024, 3, 15, 7, 30)) == dt.datetime(2024, 3, 14, 9, 0)
+
+    def test_a_boundary_floors_to_itself(self) -> None:
+        """Test that flooring an interval start leaves it alone."""
+        boundary = dt.datetime(2024, 3, 15, 9, 0)
+        assert Period.of_hours(1).floor(boundary) == boundary
+
+    def test_floor_is_idempotent(self) -> None:
+        """Test that flooring an already-floored datetime changes nothing."""
+        period = Period.of("P1D+T9H")
+        once = period.floor(dt.datetime(2024, 3, 15, 7, 30))
+        assert period.floor(once) == once
+
+    def test_floored_datetime_is_aligned(self) -> None:
+        """Test that floor() always lands on a boundary, which is what is_aligned reports."""
+        assert Period.of_minutes(15).is_aligned(Period.of_minutes(15).floor(dt.datetime(2024, 3, 15, 9, 47)))
+
+    def test_floor_carries_the_periods_tzinfo(self) -> None:
+        """Test that floor() stamps the period's tzinfo, exactly as datetime() does."""
+        period = Period.of_hours(1).with_tzinfo(dt.UTC)
+        assert period.floor(dt.datetime(2024, 3, 15, 9, 47)).tzinfo == dt.UTC
+
+    def test_floor_ignores_the_tzinfo_of_its_argument(self) -> None:
+        """Test that floor() reads wall-clock fields only, as ordinal() documents."""
+        period = Period.of_hours(1)
+        naive_dt = dt.datetime(2024, 3, 15, 9, 47)
+        assert period.floor(naive_dt) == period.floor(naive_dt.replace(tzinfo=dt.UTC))
+
+
+class TestInterval:
+    def test_returns_the_half_open_bounds_of_the_interval(self) -> None:
+        """Test that interval() gives this interval's start and the next one's."""
+        assert Period.of_hours(1).interval(dt.datetime(2024, 3, 15, 9, 47)) == (
+            dt.datetime(2024, 3, 15, 9),
+            dt.datetime(2024, 3, 15, 10),
+        )
+
+    def test_bounds_a_calendar_interval(self) -> None:
+        """Test that a month's bounds follow the calendar rather than a fixed length."""
+        assert Period.of_months(1).interval(dt.datetime(2024, 2, 10)) == (
+            dt.datetime(2024, 2, 1),
+            dt.datetime(2024, 3, 1),
+        )
+
+    def test_end_is_the_start_of_the_next_interval(self) -> None:
+        """Test that consecutive intervals meet exactly, leaving no gap and no overlap."""
+        p = Period.of("P1D+T9H")
+        end = p.interval(dt.datetime(2024, 3, 15))[1]
+        assert p.interval(end)[0] == end
+
+    def test_bounds_contain_the_datetime_they_were_derived_from(self) -> None:
+        """Test the half-open contract: start <= d < end."""
+        moment = dt.datetime(2024, 3, 15, 9, 47, 30)
+        for period in (Period.of("PT15M"), Period.of("P1M"), Period.of("P1D+T9H"), Period.of("2024-01-01/P7D")):
+            start, end = period.interval(moment)
+            assert start <= moment < end
+
+    def test_start_agrees_with_floor(self) -> None:
+        """Test that the start bound is the same value floor() returns."""
+        moment = dt.datetime(2024, 3, 15, 9, 47, 30)
+        period = Period.of("P1D+T9H")
+        assert period.interval(moment)[0] == period.floor(moment)
+
+    def test_bounds_carry_the_periods_tzinfo(self) -> None:
+        """Test that both bounds are stamped with the period's tzinfo, as datetime() does."""
+        period = Period.of_hours(1).with_tzinfo(dt.UTC)
+        bounds = period.interval(dt.datetime(2024, 3, 15, 9, 47))
+        assert all(bound.tzinfo == dt.UTC for bound in bounds)
+
+    def test_end_beyond_the_representable_range_raises(self) -> None:
+        """Test that the last interval on the timeline has no representable end, and says so."""
+        period = Period.of_days(1)
+        with pytest.raises((ValueError, OverflowError)):
+            period.interval(period.datetime(period.max_ordinal))
+
+    def test_ignores_the_tzinfo_of_its_argument(self) -> None:
+        """Test that the bounds are read off wall-clock fields only, as ordinal() documents."""
+        period = Period.of_hours(6)
+        naive_dt = dt.datetime(2024, 3, 15, 9, 47)
+        assert period.interval(naive_dt) == period.interval(naive_dt.replace(tzinfo=dt.UTC))
+
+
+class TestRange:
+    def test_yields_every_interval_start_in_the_window(self) -> None:
+        """Test the straightforward case, where the window sits on the period's boundaries."""
+        assert list(Period.of_hours(6).range(dt.datetime(2024, 3, 1), dt.datetime(2024, 3, 2))) == [
+            dt.datetime(2024, 3, 1, 0),
+            dt.datetime(2024, 3, 1, 6),
+            dt.datetime(2024, 3, 1, 12),
+            dt.datetime(2024, 3, 1, 18),
+        ]
+
+    def test_includes_the_interval_containing_the_start(self) -> None:
+        """Test that a window opening mid-interval still yields that interval, from before the window."""
+        assert list(Period.of_hours(6).range(dt.datetime(2024, 3, 1, 3), dt.datetime(2024, 3, 1, 13))) == [
+            dt.datetime(2024, 3, 1, 0),
+            dt.datetime(2024, 3, 1, 6),
+            dt.datetime(2024, 3, 1, 12),
+        ]
+
+    def test_excludes_the_interval_starting_exactly_at_the_end(self) -> None:
+        """Test that the window is half-open: an interval beginning at `end` is outside it."""
+        starts = list(Period.of_hours(6).range(dt.datetime(2024, 3, 1), dt.datetime(2024, 3, 1, 12)))
+        assert starts == [dt.datetime(2024, 3, 1, 0), dt.datetime(2024, 3, 1, 6)]
+
+    def test_walks_a_calendar_grid(self) -> None:
+        """Test that months need no special handling despite their varying length."""
+        assert list(Period.of_months(1).range(dt.datetime(2024, 1, 15), dt.datetime(2024, 4, 1))) == [
+            dt.datetime(2024, 1, 1),
+            dt.datetime(2024, 2, 1),
+            dt.datetime(2024, 3, 1),
+        ]
+
+    def test_respects_an_offset(self) -> None:
+        """Test that an offset period walks its own shifted boundaries."""
+        assert list(Period.of("P1D+T9H").range(dt.datetime(2024, 3, 1), dt.datetime(2024, 3, 3))) == [
+            dt.datetime(2024, 2, 29, 9),
+            dt.datetime(2024, 3, 1, 9),
+            dt.datetime(2024, 3, 2, 9),
+        ]
+
+    @pytest.mark.parametrize(
+        "start,end",
+        [
+            (dt.datetime(2024, 3, 1), dt.datetime(2024, 3, 1)),
+            (dt.datetime(2024, 3, 2), dt.datetime(2024, 3, 1)),
+            (dt.datetime(2024, 3, 1, 5), dt.datetime(2024, 3, 1, 1)),
+        ],
+        ids=["empty window", "reversed window", "reversed within one interval"],
+    )
+    def test_a_window_that_does_not_open_yields_nothing(self, start: dt.datetime, end: dt.datetime) -> None:
+        """Test that an empty or backwards window yields no intervals rather than one."""
+        assert list(Period.of_hours(6).range(start, end)) == []
+
+    def test_a_window_inside_one_interval_yields_that_interval(self) -> None:
+        """Test that a window too small to span a boundary still reports the interval it sits in."""
+        assert list(Period.of_hours(6).range(dt.datetime(2024, 3, 1, 1), dt.datetime(2024, 3, 1, 2))) == [
+            dt.datetime(2024, 3, 1, 0)
+        ]
+
+    def test_every_yielded_start_is_aligned(self) -> None:
+        """Test that range() only ever yields real interval boundaries."""
+        period = Period.of("P1D+T9H")
+        assert all(period.is_aligned(s) for s in period.range(dt.datetime(2024, 1, 1), dt.datetime(2024, 2, 1)))
+
+    def test_yielded_starts_are_consecutive_ordinals(self) -> None:
+        """Test that the walk skips nothing and repeats nothing."""
+        period = Period.of_months(1)
+        ordinals = [period.ordinal(s) for s in period.range(dt.datetime(2024, 1, 15), dt.datetime(2025, 1, 1))]
+        assert ordinals == list(range(ordinals[0], ordinals[0] + len(ordinals)))
+
+    def test_yields_lazily(self) -> None:
+        """Test that a window spanning a huge number of intervals costs nothing until iterated."""
+        walk = Period.of("PT0.000001S").range(dt.datetime(1, 1, 1), dt.datetime(9999, 12, 31))
+        assert next(walk) == dt.datetime(1, 1, 1)
+
+    def test_ignores_the_tzinfo_of_its_arguments(self) -> None:
+        """Test that the window is read as wall-clock, as ordinal() documents."""
+        period = Period.of_hours(6)
+        start, end = dt.datetime(2024, 3, 1), dt.datetime(2024, 3, 2)
+        assert list(period.range(start, end)) == list(
+            period.range(start.replace(tzinfo=dt.UTC), end.replace(tzinfo=dt.UTC))
+        )
+
+    def test_yielded_starts_carry_the_periods_tzinfo(self) -> None:
+        """Test that yielded datetimes are stamped with the period's tzinfo."""
+        period = Period.of_hours(6).with_tzinfo(dt.UTC)
+        assert all(s.tzinfo == dt.UTC for s in period.range(dt.datetime(2024, 3, 1), dt.datetime(2024, 3, 2)))
 
 
 class TestScalarProperties:

@@ -43,9 +43,9 @@ Current version: |release|
 
         Ask whether a timestamp sits on a period boundary, and whether one period nests cleanly inside another.
 
-    .. grid-item-card:: :octicon:`typography` Formatting
+    .. grid-item-card:: :octicon:`pin` Origins
 
-        Render a timestamp to exactly the precision its period justifies.
+        Pin the grid to a chosen datetime, so a known start date defines where the intervals fall.
 
     .. grid-item-card:: :octicon:`package` No dependencies
 

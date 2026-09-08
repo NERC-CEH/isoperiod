@@ -57,8 +57,8 @@ Two methods map between the two views of the timeline:
   is 15 minutes or a calendar month.
 - **Grouping is free.** Two timestamps belong to the same interval exactly when their ordinals are equal, so an
   ordinal is a ready-made grouping key.
-- **Truncation is exact.** ``period.datetime(period.ordinal(d))`` floors ``d`` to its interval boundary, including
-  for months and years, which a ``timedelta`` can't do.
+- **Truncation is exact.** :meth:`~isoperiod.Period.floor` snaps ``d`` to its interval boundary, including for months
+  and years, which a ``timedelta`` can't do.
 
 .. note::
 

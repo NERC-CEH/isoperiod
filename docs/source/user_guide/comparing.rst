@@ -24,18 +24,24 @@ split the timeline the same way and number it the same way - the way they were b
     assert Period.of_hours(24) == Period.of_days(1)
     assert Period.of("PT15M") == Period.of_minutes(15) == Period.of_seconds(900)
 
-Periods also sort, shortest first:
+Periods also sort, shortest first - including across the boundary between calendar and fixed-length periods:
 
 .. code-block:: python
 
-    periods = [Period.of_years(1), Period.of_hours(1), Period.of_days(1), Period.of_months(1)]
+    periods = [Period.of_days(100), Period.of("PT1.5S"), Period.of_seconds(1), Period.of_years(1), Period.of_months(1)]
 
     assert sorted(periods) == [
-        Period.of_hours(1),
-        Period.of_days(1),
+        Period.of_seconds(1),
+        Period.of("PT1.5S"),
         Period.of_months(1),
-        Period.of_years(1)
+        Period.of_days(100),
+        Period.of_years(1),
     ]
+
+.. note::
+
+   A calendar month has no fixed length, so ordering takes it as its mean Gregorian length of 30.436875 days
+   (365.2425 / 12). That approximation is used *only* to order periods.
 
 .. note::
 

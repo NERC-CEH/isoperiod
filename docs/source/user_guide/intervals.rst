@@ -13,7 +13,7 @@ methods move between the two views, and they are inverses of each other:
 
 .. code-block:: python
 
-    from datetime import datetime, timedelta
+    from datetime import datetime
     from isoperiod import Period
 
     p1h = Period.of_hours(1)
@@ -25,21 +25,23 @@ methods move between the two views, and they are inverses of each other:
 Flooring a timestamp to its interval
 ====================================
 
-Round-tripping through an ordinal floors a datetime onto the period's grid. This also works for calendar units where
-arithmetic on a ``timedelta`` cannot:
+:meth:`~isoperiod.Period.floor` snaps a datetime down onto the period's grid. This also works for calendar units
+where arithmetic on a ``timedelta`` cannot:
 
 .. code-block:: python
 
-    def floor(period: Period, d: datetime) -> datetime:
-        """The start of the interval containing `d`."""
-        return period.datetime(period.ordinal(d))
-
     d = datetime(2024, 3, 15, 9, 47, 30)
 
-    assert floor(Period.of_minutes(15), d) == datetime(2024, 3, 15, 9, 45)
-    assert floor(Period.of_days(1), d) == datetime(2024, 3, 15)
-    assert floor(Period.of_months(1), d) == datetime(2024, 3, 1)
-    assert floor(Period.of_years(1), d) == datetime(2024, 1, 1)
+    assert Period.of_minutes(15).floor(d) == datetime(2024, 3, 15, 9, 45)
+    assert Period.of_days(1).floor(d) == datetime(2024, 3, 15)
+    assert Period.of_months(1).floor(d) == datetime(2024, 3, 1)
+    assert Period.of_years(1).floor(d) == datetime(2024, 1, 1)
+
+An offset moves every boundary, and with it what a timestamp floors to:
+
+.. code-block:: python
+
+    assert Period.of("P1D+T9H").floor(datetime(2024, 3, 15, 7, 30)) == datetime(2024, 3, 14, 9, 0)
 
 
 Stepping along the timeline
@@ -61,24 +63,79 @@ yearly grid without worrying about month ends:
         datetime(2024, 4, 1),
     ]
 
-To generate the boundaries between two datetimes, iterate over the ordinal range:
+:meth:`~isoperiod.Period.range` does that walk for you, yielding the start of every interval that overlaps a
+window of time:
 
 .. code-block:: python
 
-    def boundaries(period: Period, start: datetime, end: datetime) -> list[datetime]:
-        """Every interval start from the one containing `start` up to (not including) `end`."""
-        return [
-            period.datetime(n)
-            for n in range(period.ordinal(start), period.ordinal(end) + 1)
-            if period.datetime(n) < end
-        ]
+    pt6h = Period.of_hours(6)
 
-    assert boundaries(Period.of_hours(6), datetime(2024, 3, 1), datetime(2024, 3, 2)) == [
+
+    window_start = datetime(2024, 3, 1)
+    window_end = datetime(2024, 3, 2)
+
+    # Create a generator that steps through the start of each "pt6h" period in the window
+    window_range = pt6h.range(window_start, window_end)
+
+    assert list(window_range) == [
         datetime(2024, 3, 1, 0),
         datetime(2024, 3, 1, 6),
         datetime(2024, 3, 1, 12),
         datetime(2024, 3, 1, 18),
     ]
+
+An interval counts as overlapping if any part of it falls in the window, so a window opening part-way through an
+interval still yields the whole of it. This is usually what you want when deciding which intervals a batch of
+readings touches:
+
+.. code-block:: python
+
+    pt6h = Period.of_hours(6)
+
+    window_start = datetime(2024, 3, 1, 3)
+    window_end = datetime(2024, 3, 1, 13)
+
+    window_range = pt6h.range(window_start, window_end)
+
+    assert list(window_range) == [
+        datetime(2024, 3, 1, 0),
+        datetime(2024, 3, 1, 6),
+        datetime(2024, 3, 1, 12),
+    ]
+
+Values are produced lazily, so a window covering a large number of intervals costs nothing until it is iterated.
+
+Bounding a single interval
+==========================
+
+:meth:`~isoperiod.Period.interval` returns the start and end of the interval holding a datetime, as a half-open
+pair - `end` is the first instant of the next interval, so ``start <= d < end`` holds for every datetime in it:
+
+.. code-block:: python
+
+    pt1h = Period.of_hours(1)
+    d = datetime(2024, 3, 15, 9, 47)
+
+    start, end = pt1h.interval(d)
+
+    assert (start, end) == (datetime(2024, 3, 15, 9), datetime(2024, 3, 15, 10))
+
+The start is the same value :meth:`~isoperiod.Period.floor` gives; the end is the new information, and it is the
+part you cannot get by adding a ``timedelta`` when the period is a calendar one.
+
+Since :meth:`~isoperiod.Period.range` yields datetimes, the two can be used together to walk a window as bounded
+intervals:
+
+.. code-block:: python
+
+    spans = [pt6h.interval(s) for s in pt6h.range(datetime(2024, 3, 1), datetime(2024, 3, 1, 13))]
+
+    assert spans == [
+        (datetime(2024, 3, 1, 0), datetime(2024, 3, 1, 6)),
+        (datetime(2024, 3, 1, 6), datetime(2024, 3, 1, 12)),
+        (datetime(2024, 3, 1, 12), datetime(2024, 3, 1, 18)),
+    ]
+
 
 Grouping by interval
 ====================

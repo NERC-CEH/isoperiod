@@ -2,7 +2,7 @@
 
 import datetime as dt
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from isoperiod.enums import Step
 from isoperiod.exceptions import PeriodValidationError, illegal_step
@@ -41,7 +41,7 @@ UNALIGNED = Alignment(aligned=False, count=None)
 ALIGNED_VARYING = Alignment(aligned=True, count=None)
 
 
-@dataclass(eq=True, order=True, frozen=True)
+@dataclass(eq=True, frozen=True)
 class Properties:
     """The complete, validated specification of a period: everything needed to describe one.
 
@@ -52,7 +52,8 @@ class Properties:
     * an optional (5) `tzinfo` to describe the time zone,
     * and an (6) `ordinal_shift` choosing which interval is numbered 0.
 
-    Properties objects are immutable, sortable and hashable, being a frozen dataclass.
+    Properties objects are immutable and hashable, being a frozen dataclass, and sortable by length - see
+    `_order_key`, which the ordering dunders below are built on.
 
     Why this is separate from Period:
         A Period *does* things with a specification - maps datetimes to ordinals and back, formats, counts. This
@@ -633,6 +634,85 @@ class Properties:
         if (other_offset - self_offset) % self_multiplier != 0:
             return None
         return mult_q
+
+    def _nominal_microseconds(self) -> int:
+        """Return this period's length in microseconds, taking a month to be its mean Gregorian length.
+
+        A calendar month has no fixed length, so for a MONTHS step this is an approximation. It exists solely to
+        put periods in "shortest first" order, which needs calendar and fixed-length periods to be comparable
+        against each other. Nothing else uses it: alignment, counting and every interval calculation work off the
+        real calendar, and :meth:`get_timedelta` still returns None for a month rather than an approximation.
+
+        Contrast :meth:`_microsecond_multiplier`, which is exact but undefined for a MONTHS step.
+
+        Returns:
+            The period's nominal length, in microseconds
+
+        Raises:
+            PeriodValidationError: If the step is not one of the three legal steps
+        """
+        # The mean length of a Gregorian calendar month, in microseconds: a year of 365.2425 days divided by 12
+        nominal_month_microseconds = (365.2425 / 12) * 24 * 60 * 60 * 1_000_000
+
+        match self.step:
+            case Step.MICROSECONDS:
+                return self.multiplier
+            case Step.SECONDS:
+                return self.multiplier * 1_000_000
+            case Step.MONTHS:
+                return int(self.multiplier * nominal_month_microseconds)
+            case _:
+                raise illegal_step(self.step)
+
+    def _order_key(self) -> tuple[int, int, int, int, dt.tzinfo | None, int]:
+        """Return the tuple that orders this period against another: nominal length first, then enough of the
+        remaining fields to break every tie.
+
+        Length is what the ordering is *for*, so it leads. Everything after it only separates periods of equal
+        nominal length, and does so arbitrarily but consistently; what matters is that the order is total and
+        agrees with `__eq__`. It does, because `step` together with the nominal length recovers `multiplier`, so
+        no two unequal Properties can share a key.
+
+        Ordering cannot be left to the dataclass, which would compare the fields in declaration order and so sort
+        by `step` before `multiplier` - putting every sub-second period before every whole-second one, and every
+        fixed-length period before every calendar one, regardless of length.
+
+        `tzinfo` is carried raw rather than reduced to something orderable, so that comparing two periods alike in
+        every respect but their timezone raises TypeError, exactly as comparing a naive datetime against an aware
+        one does. Tuple comparison stops at the first field that settles the order, so the timezones of periods of
+        differing length are never compared at all.
+
+        Returns:
+            A tuple that orders this period against another
+        """
+        return (
+            self._nominal_microseconds(),
+            self.step,
+            self.month_offset,
+            self.microsecond_offset,
+            self.tzinfo,
+            self.ordinal_shift,
+        )
+
+    def __lt__(self, other: Any) -> bool:
+        if not isinstance(other, Properties):
+            return NotImplemented
+        return self._order_key() < other._order_key()
+
+    def __le__(self, other: Any) -> bool:
+        if not isinstance(other, Properties):
+            return NotImplemented
+        return self._order_key() <= other._order_key()
+
+    def __gt__(self, other: Any) -> bool:
+        if not isinstance(other, Properties):
+            return NotImplemented
+        return self._order_key() > other._order_key()
+
+    def __ge__(self, other: Any) -> bool:
+        if not isinstance(other, Properties):
+            return NotImplemented
+        return self._order_key() >= other._order_key()
 
     def __str__(self) -> str:
         elems: list[str] = ["P"]

@@ -80,6 +80,46 @@ class TestEveryPeriod:
             ordinal = period.ordinal(dt)
             assert period.datetime(ordinal) <= dt < period.datetime(ordinal + 1)
 
+    def test_floor_is_the_ordinal_datetime_round_trip(self, period: Period) -> None:
+        """Test that floor() is exactly datetime(ordinal(d)), the round trip it stands in for."""
+        for dt in _dates_to_test(period):
+            assert period.floor(dt) == period.datetime(period.ordinal(dt))
+
+    def test_floor_lands_on_a_boundary_and_stays_there(self, period: Period) -> None:
+        """Test that a floored datetime is aligned, and that flooring it again changes nothing."""
+        for dt in _dates_to_test(period):
+            floored = period.floor(dt)
+            assert period.is_aligned(floored)
+            assert period.floor(floored) == floored
+
+    def test_interval_bounds_the_datetime_it_holds(self, period: Period) -> None:
+        """Test the half-open contract start <= dt < end, for every test datetime."""
+        for dt in _dates_to_test(period):
+            start, end = period.interval(dt)
+            assert start <= dt < end
+
+    def test_intervals_meet_exactly(self, period: Period) -> None:
+        """Test that one interval ends where the next begins, leaving no gap and no overlap."""
+        for dt in _dates_to_test(period):
+            start, end = period.interval(dt)
+            assert start == period.floor(dt)
+            if period.ordinal(dt) < period.max_ordinal - 1:
+                assert period.interval(end)[0] == end
+
+    def test_range_yields_exactly_the_intervals_it_spans(self, period: Period) -> None:
+        """Test that a window running from one interval start to another yields the starts between them."""
+        mid = (period.min_ordinal + period.max_ordinal) // 2
+        starts = [period.datetime(mid + i) for i in range(4)]
+        assert list(period.range(starts[0], starts[3])) == starts[:3]
+        assert list(period.range(starts[0], starts[0])) == []
+
+    def test_a_period_is_never_shorter_than_itself(self, period: Period) -> None:
+        """Test that the ordering is irreflexive, whatever the period's step, offset or timezone."""
+        assert not (period < period)
+        assert not (period > period)
+        assert period <= period
+        assert period >= period
+
     def test_interval_starts_are_aligned(self, period: Period) -> None:
         """Test that the first instant of an interval always reports as aligned."""
         for dt in _dates_to_test(period):

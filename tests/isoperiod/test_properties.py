@@ -401,6 +401,50 @@ class TestStrAndRepr:
         assert repr(seconds(1).with_tzinfo(_NoOffsetTZ())).endswith("[]")
 
 
+class TestOrdering:
+    @pytest.mark.parametrize(
+        "props,expected",
+        [
+            (micros(40_000), 40_000),
+            (seconds(900), 900_000_000),
+            (months(1), 2_629_746_000_000),
+            (months(12), 31_556_952_000_000),
+        ],
+        ids=["40 ms", "15 minutes", "1 month", "1 year"],
+    )
+    def test_nominal_microseconds(self, props: Properties, expected: int) -> None:
+        """Test that nominal length is exact for fixed steps and the mean Gregorian month for calendar ones."""
+        assert props._nominal_microseconds() == expected
+
+    def test_a_year_is_twelve_nominal_months(self) -> None:
+        """Test that the month approximation stays self-consistent across the year boundary."""
+        assert months(12)._nominal_microseconds() == 12 * months(1)._nominal_microseconds()
+
+    def test_order_key_leads_with_length(self) -> None:
+        """Test that the first element of the ordering key is the nominal length, so length decides first."""
+        assert seconds(900)._order_key()[0] == seconds(900)._nominal_microseconds()
+
+    def test_order_key_separates_properties_that_are_unequal(self) -> None:
+        """Test that the key is injective, which is what keeps the order total and consistent with __eq__."""
+        candidates = [
+            months(1),
+            months(12),
+            seconds(1),
+            seconds(2_629_746),
+            micros(1_500_000),
+            months(12, month_offset=9),
+            seconds(900, microsecond_offset=300_000_000),
+            seconds(900).with_ordinal_shift(-5),
+        ]
+        keys = [p._order_key() for p in candidates]
+        assert len(keys) == len(set(keys))
+
+    @pytest.mark.parametrize("op", ["__lt__", "__le__", "__gt__", "__ge__"], ids=["lt", "le", "gt", "ge"])
+    def test_ordering_against_a_non_properties_returns_notimplemented(self, op: str) -> None:
+        """Test that each ordering dunder defers rather than raising when handed something else."""
+        assert getattr(seconds(10), op)("not a Properties") is NotImplemented
+
+
 class TestStepDispatchGuards:
     @pytest.mark.parametrize(
         "call",
@@ -411,6 +455,7 @@ class TestStepDispatchGuards:
             lambda p: p.normalise_offsets(),
             lambda p: p.pl_interval(),
             lambda p: p.is_epoch_agnostic(),
+            lambda p: p._nominal_microseconds(),
         ],
         ids=[
             "get_iso8601",
@@ -419,6 +464,7 @@ class TestStepDispatchGuards:
             "normalise_offsets",
             "pl_interval",
             "is_epoch_agnostic",
+            "_nominal_microseconds",
         ],
     )
     def test_bad_step_is_rejected(self, call) -> None:

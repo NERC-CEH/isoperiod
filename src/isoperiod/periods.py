@@ -4,6 +4,7 @@ functions that choose the right implementation for a given Properties object.
 
 import datetime as dt
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import replace
 from typing import Any, override
 
@@ -111,9 +112,10 @@ class Period(ABC):
         Period.of_days(1).with_hour_offset(9)          # every day, starting at 09:00
         Period.of_years(1).with_tzinfo(timezone.utc)
 
-    Period instances are immutable and hashable, so they work in sets and as dict keys. They also sort, with the
-    same caveat that applies to datetime objects: comparing Periods whose tzinfo values are mismatched raises
-    ``TypeError`` rather than producing an order.
+    Period instances are immutable and hashable, so they work in sets and as dict keys. They also sort, shortest
+    first, with a calendar month taken as its mean Gregorian length so that calendar and fixed-length periods can
+    be ordered against one another. One caveat applies, the same one that applies to datetime objects: comparing
+    two Periods that differ only in their tzinfo raises ``TypeError`` rather than producing an order.
     """
 
     @staticmethod
@@ -522,6 +524,126 @@ class Period(ABC):
                 assert p1h.datetime(n) == datetime(2024, 3, 1, 9, 0)       # start of the interval
                 assert p1h.datetime(n + 1) == datetime(2024, 3, 1, 10, 0)  # start of the next one
         """
+
+    def floor(self, datetime_obj: dt.datetime) -> dt.datetime:
+        """Return the first instant of the interval that contains the supplied datetime.
+
+        Shorthand for ``period.datetime(period.ordinal(datetime_obj))`` - snapping a timestamp onto this
+        period's grid. Unlike truncating with a :class:`datetime.timedelta`, it works for calendar periods and
+        for periods carrying an offset.
+
+        Args:
+            datetime_obj: The datetime to floor. Any tzinfo it carries is ignored, as in :meth:`ordinal`.
+
+        Returns:
+            A datetime object marking the first instant of the interval containing `datetime_obj`, carrying this
+            Period's own tzinfo
+
+        Examples:
+            .. code-block:: python
+
+                from datetime import datetime
+
+                reading = datetime(2024, 3, 15, 9, 47, 30)
+
+                assert Period.of_minutes(15).floor(reading) == datetime(2024, 3, 15, 9, 45)
+                assert Period.of_months(1).floor(reading) == datetime(2024, 3, 1)
+
+                # An offset moves every boundary, and with it what a timestamp floors to.
+                water_day = Period.of_days(1).with_hour_offset(9)
+                assert water_day.floor(datetime(2024, 3, 15, 7, 30)) == datetime(2024, 3, 14, 9, 0)
+
+                # A floored datetime always lands on a boundary.
+                assert Period.of_minutes(15).is_aligned(Period.of_minutes(15).floor(reading))
+        """
+        return self.datetime(self.ordinal(datetime_obj))
+
+    def interval(self, datetime_obj: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
+        """Return the bounds of the interval containing the supplied datetime, as a (start, end) pair.
+
+        The pair is half-open - ``start <= d < end`` for every datetime `d` in the interval - so `end` is the
+        first instant of the next interval and belongs to that one. `start` is what :meth:`floor` returns.
+
+        Args:
+            datetime_obj: The datetime whose interval is wanted. Any tzinfo it carries is ignored, as in
+                :meth:`ordinal`.
+
+        Returns:
+            A (start, end) tuple of datetimes, both carrying this Period's own tzinfo
+
+        Examples:
+            .. code-block:: python
+
+                from datetime import datetime
+
+                start, end = Period.of_hours(1).interval(datetime(2024, 3, 15, 9, 47))
+
+                assert start == datetime(2024, 3, 15, 9, 0)
+                assert end == datetime(2024, 3, 15, 10, 0)
+
+                # Calendar intervals work the same way, despite their varying length.
+                start, end = Period.of_months(1).interval(datetime(2024, 2, 10))
+
+                assert start == datetime(2024, 2, 1)
+                assert end == datetime(2024, 3, 1)
+
+        See also:
+            :meth:`range`, which yields interval starts this can turn into bounded intervals.
+        """
+        ordinal = self.ordinal(datetime_obj)
+        return self.datetime(ordinal), self.datetime(ordinal + 1)
+
+    def range(self, start: dt.datetime, end: dt.datetime) -> Iterator[dt.datetime]:
+        """Yield the start of every interval overlapping the half-open window from `start` to `end`.
+
+        The first value is the start of the interval *containing* `start`, which may fall before it; the last is
+        the start of the last interval that begins before `end`. An interval is included when any part of it
+        falls in the window, so the first and last may both extend beyond it. The window is empty if `end` is
+        not after `start`.
+
+        Args:
+            start: The start datetime of the range window.
+            end: The end datetime of the range window.
+
+        Yields:
+            The first instant of each overlapping interval, in order.
+
+        Examples:
+            .. code-block:: python
+
+                from datetime import datetime
+
+                p6h = Period.of_hours(6)
+
+                assert list(p6h.range(datetime(2024, 3, 1), datetime(2024, 3, 2))) == [
+                    datetime(2024, 3, 1, 0),
+                    datetime(2024, 3, 1, 6),
+                    datetime(2024, 3, 1, 12),
+                    datetime(2024, 3, 1, 18),
+                ]
+
+                # A window that starts mid-interval still yields that whole interval ...
+                assert list(p6h.range(datetime(2024, 3, 1, 3), datetime(2024, 3, 1, 13))) == [
+                    datetime(2024, 3, 1, 0),
+                    datetime(2024, 3, 1, 6),
+                    datetime(2024, 3, 1, 12),
+                ]
+
+                # ... and calendar periods need no special handling.
+                assert list(Period.of_months(1).range(datetime(2024, 1, 15), datetime(2024, 4, 1))) == [
+                    datetime(2024, 1, 1),
+                    datetime(2024, 2, 1),
+                    datetime(2024, 3, 1),
+                ]
+        """
+        if naive(end) <= naive(start):
+            return
+        end_ordinal = self.ordinal(end)
+        if not self.is_aligned(end):
+            # `end` falls mid-interval, so that interval overlaps the window and is included.
+            end_ordinal += 1
+        for ordinal in range(self.ordinal(start), end_ordinal):
+            yield self.datetime(ordinal)
 
     def is_aligned(self, datetime_obj: dt.datetime) -> bool:
         """Return True if the supplied datetime is exactly the start of one of this period's intervals.
