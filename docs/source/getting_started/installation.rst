@@ -8,6 +8,13 @@ Installation
 
    Install **isoperiod** as a Python package and verify your setup.
 
+Requirements
+============
+
+- Python **3.12+**
+- Recommended package manager: **pip** or `uv <https://docs.astral.sh/uv/getting-started/installation/>`_
+- **No runtime dependencies** - isoperiod is built on the standard library's :mod:`datetime` module alone
+
 Install options
 ===============
 
@@ -21,13 +28,13 @@ Install options
 
         .. code-block:: bash
 
-            uv add isoperiod
+            uv add git+https://github.com/NERC-CEH/isoperiod.git@main
 
     .. tab-item:: :iconify:`devicon:pypi` pip
 
         .. code-block:: bash
 
-            pip install isoperiod
+            pip install git+https://github.com/NERC-CEH/isoperiod.git@main
 
 Importing
 =========
@@ -36,4 +43,4 @@ To use the library, simply import into your Python script:
 
 .. code-block:: python
 
-   import isoperiod
+   from isoperiod import Period

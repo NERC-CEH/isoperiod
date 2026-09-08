@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "isoperiod"
-version = "0.1.0"
+version = "1.0.0"
 description = "ISO 8601 period and duration arithmetic, including offsets from the natural boundary, for defining sampling resolution and periodicity in timeseries data"
 readme = "README.md"
 authors = [
@@ -38,6 +38,7 @@ test = [
     "coverage",
     "pytest",
     "pytest-cov",
+    "sybil[pytest]>=10.1.0",
 ]
 typecheck = [
     "pyright",
@@ -56,10 +57,10 @@ docs = [
 
 
 [project.urls]
-bugs = "https://github.com/richjam/isoperiod/issues"
-changelog = "https://github.com/richjam/isoperiod/releases"
-documentation = "https://richjam.github.io/isoperiod/"
-homepage = "https://github.com/richjam/isoperiod"
+bugs = "https://github.com/NERC-CEH/isoperiod/issues"
+changelog = "https://github.com/NERC-CEH/isoperiod/releases"
+documentation = "https://nerc-ceh.github.io/isoperiod/"
+homepage = "https://github.com/NERC-CEH/isoperiod"
 
 
 [tool.pyright]
@@ -83,7 +84,7 @@ select = [
 [tool.coverage.run]
 branch = true
 parallel = true
-source = ["src/", "tests/"]
+source = ["src"]
 omit = ["src/*/__main__.py"]
 
 [tool.coverage.report]
@@ -104,8 +105,11 @@ exclude_also = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "--cov=src --cov-report=term-missing"
+# "docs/source", "src" and the README are here so that Sybil (see conftest.py) collects the
+# documentation examples - the .rst pages, the docstrings, and the README - as tests.
+testpaths = ["tests", "docs/source", "src", "README.md"]
+# "-p no:doctest" disables pytest's own doctest plugin, as Sybil (see conftest.py) recommends
+addopts = "--import-mode=importlib --cov=src --cov-report=term-missing -p no:doctest"
 
 [tool.uv]
 package = true

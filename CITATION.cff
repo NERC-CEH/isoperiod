@@ -9,9 +9,9 @@ authors:
     affiliation: "UKCEH"
     #orcid: "https://orcid.org/0000-0000-0000-0000"  # TODO: add your ORCID
 abstract: "ISO 8601 period and duration arithmetic, including offsets from the natural boundary, for defining sampling resolution and periodicity in timeseries data"
-repository-code: "https://github.com/richjam/isoperiod"
+repository-code: "https://github.com/NERC-CEH/isoperiod"
 license: MIT
-version: 0.1.0
+version: 1.0.0
 contact:
   - given-names: "Richard"
     family-names: "Smith"
