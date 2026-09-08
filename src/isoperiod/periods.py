@@ -6,7 +6,7 @@ import datetime as dt
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import replace
-from typing import Any, override
+from typing import Any, ClassVar, override
 
 from isoperiod import parsing, timeline
 from isoperiod.enums import Step
@@ -36,6 +36,19 @@ class Period(ABC):
     They are inverses, in the sense that ``period.ordinal(d) == n`` for every datetime where
     ``period.datetime(n) <= d < period.datetime(n + 1)``.
 
+    An **offset** shifts every one of those boundaries by a fixed amount, so intervals keep their size but start
+    somewhere else - e.g. a hydrological day running 09:00 to 09:00, or a year starting in October. In string form it
+    is written ``<duration>+<offset>`` (``"P1D+T9H"``), this package's own extension of the ISO 8601 duration
+    format. See :doc:`/user_guide/offsets`.
+
+    Period is abstract: build one with an ``of_*`` factory, then refine it with the ``with_*`` methods, each of
+    which returns a new Period rather than mutating the original.
+
+    Instances are immutable and hashable, so they work in sets and as dict keys. They sort shortest first, with a
+    calendar month taken as its mean Gregorian length so that calendar and fixed-length periods order against one
+    another; comparing two Periods that differ only in their tzinfo raises ``TypeError``, just as comparing a
+    naive datetime with an aware one does.
+
     Examples:
         .. code-block:: python
 
@@ -53,69 +66,11 @@ class Period(ABC):
             assert p1h.ordinal(d) + 24 == p1h.ordinal(d + timedelta(days=1))
 
             # Months work the same way, despite their varying length.
-            p1m = Period.of_months(1)
-            assert p1m.datetime(p1m.ordinal(datetime(2024, 3, 15))) == datetime(2024, 3, 1)
+            assert Period.of_months(1).floor(datetime(2024, 3, 15)) == datetime(2024, 3, 1)
 
-    Offsets:
-        By default a Period's intervals fall on the natural boundaries of their unit: a one-day period runs
-        midnight to midnight, a one-hour period from the top of one hour to the top of the next, a one-year
-        period from January 1st. An **offset** moves every one of those boundaries by a fixed amount, so the
-        intervals keep their size but start somewhere else.
-
-        This is what lets a Period describe a "day" that isn't a calendar day, e.g. a hydrological day measured
-        from 09:00, or a business year starting in October:
-
-        .. code-block:: python
-
-            from datetime import datetime
-
-            water_day = Period.of_days(1).with_hour_offset(9)     # days running 09:00 -> 09:00
-            d = datetime(2024, 3, 15, 7, 30)
-
-            # 07:30 belongs to the water day that began at 09:00 the *previous* day.
-            assert water_day.datetime(water_day.ordinal(d)) == datetime(2024, 3, 14, 9, 0)
-
-        The offset applies to every interval on the timeline, not just the first - it sets the *phase* of the
-        repeating pattern. It is built with the ``with_*_offset`` methods, and written as ``<duration>+<offset>``
-        in string form (``"P1D+T9H"``, ``"P1Y+9M"``). That syntax is this package's own extension of the ISO 8601
-        duration format.
-
-    Period is abstract; build one with a factory method:
-
-    * :meth:`of_years` - "n" calendar years, from January 1st.
-    * :meth:`of_months` - "n" calendar months, from the 1st of the month.
-    * :meth:`of_days` - "n" days, from midnight.
-    * :meth:`of_hours` - "n" hours, from the top of the hour.
-    * :meth:`of_minutes` - "n" minutes, from the top of the minute.
-    * :meth:`of_seconds` - "n" whole seconds.
-    * :meth:`of_microseconds` - "n" microseconds; the finest resolution a Period can have.
-
-    From a string or a timedelta:
-
-    * :meth:`of` - all three string formats (plain duration, ``+offset``, ``<start>/<duration>``), tried in
-      turn. Use this when you do not know which form you have.
-    * :meth:`of_iso_duration` - a plain ISO 8601 duration only, e.g. ``"P1Y"``, ``"PT15M"``.
-    * :meth:`of_duration` - a plain ISO 8601 duration, or the extended ``<duration>+<offset>`` form described
-      above, e.g. ``"P1D+T9H"``.
-    * :meth:`of_date_and_duration` - the ``<start>/<duration>`` form, e.g. ``"1883-01-01/P1D"``. The start
-      date sets the period's origin, not its offset - it is the datetime given ordinal 0.
-    * :meth:`of_timedelta` - a period matching a :class:`datetime.timedelta`.
-
-    Each factory returns a fully-formed Period, which the ``with_*`` methods then refine; every one of those
-    returns a new Period rather than mutating the original:
-
-    .. code-block:: python
-
-        from datetime import timezone
-
-        Period.of("PT15M")                             # every 15 minutes
-        Period.of_days(1).with_hour_offset(9)          # every day, starting at 09:00
-        Period.of_years(1).with_tzinfo(timezone.utc)
-
-    Period instances are immutable and hashable, so they work in sets and as dict keys. They also sort, shortest
-    first, with a calendar month taken as its mean Gregorian length so that calendar and fixed-length periods can
-    be ordered against one another. One caveat applies, the same one that applies to datetime objects: comparing
-    two Periods that differ only in their tzinfo raises ``TypeError`` rather than producing an order.
+            # An offset moves every boundary: a day running 09:00 -> 09:00.
+            water_day = Period.of_days(1).with_hour_offset(9)
+            assert water_day.floor(datetime(2024, 3, 15, 7, 30)) == datetime(2024, 3, 14, 9, 0)
     """
 
     @staticmethod
@@ -211,98 +166,42 @@ class Period(ABC):
 
     @staticmethod
     def of_years(no_of_years: int) -> "Period":
-        """Return an "n"-year Period
-
-        Args:
-            no_of_years: The number of years in the period
-
-        Returns:
-            A Period object
-        """
+        """Return a Period of `no_of_years` calendar years, each starting on January 1st."""
         return build_base_period(Properties.of_months(no_of_years * 12))
 
     @staticmethod
     def of_months(no_of_months: int) -> "Period":
-        """Return an "n"-month Period
-
-        Args:
-            no_of_months: The number of months in the period
-
-        Returns:
-            A Period object
-        """
+        """Return a Period of `no_of_months` calendar months, each starting on the 1st."""
         return build_base_period(Properties.of_months(no_of_months))
 
     @staticmethod
     def of_days(no_of_days: int) -> "Period":
-        """Return an "n"-day Period
-
-        Args:
-            no_of_days: The number of days in the period
-
-        Returns:
-            A Period object
-        """
+        """Return a Period of `no_of_days` days, each starting at midnight."""
         return build_base_period(Properties.of_seconds(no_of_days * 86_400))
 
     @staticmethod
     def of_hours(no_of_hours: int) -> "Period":
-        """Return an "n"-hour Period
-
-        Args:
-            no_of_hours: The number of hours in the period
-
-        Returns:
-            A Period object
-        """
+        """Return a Period of `no_of_hours` hours, each starting on the hour."""
         return build_base_period(Properties.of_seconds(no_of_hours * 3_600))
 
     @staticmethod
     def of_minutes(no_of_minutes: int) -> "Period":
-        """Return an "n"-minute Period
-
-        Args:
-            no_of_minutes: The number of minutes in the period
-
-        Returns:
-            A Period object
-        """
+        """Return a Period of `no_of_minutes` minutes, each starting on the minute."""
         return build_base_period(Properties.of_seconds(no_of_minutes * 60))
 
     @staticmethod
     def of_seconds(no_of_seconds: int) -> "Period":
-        """Return an "n"-second Period
-
-        Args:
-            no_of_seconds: The number of seconds in the period
-
-        Returns:
-            A Period object
-        """
+        """Return a Period of `no_of_seconds` whole seconds."""
         return build_base_period(Properties.of_seconds(no_of_seconds))
 
     @staticmethod
     def of_microseconds(no_of_microseconds: int) -> "Period":
-        """Return an "n"-microsecond Period
-
-        Args:
-            no_of_microseconds: The number of microseconds in the period
-
-        Returns:
-            A Period object
-        """
+        """Return a Period of `no_of_microseconds` microseconds, the finest resolution a Period can have."""
         return build_base_period(Properties.of_microseconds(no_of_microseconds))
 
     @staticmethod
     def of_timedelta(timedelta: dt.timedelta) -> "Period":
-        """Return a Period that matches a timedelta
-
-        Args:
-            timedelta: The timedelta of the period
-
-        Returns:
-            A Period object
-        """
+        """Return a Period matching the duration of `timedelta`."""
         return build_base_period(Properties.of_microseconds(total_microseconds(timedelta)))
 
     def __init__(self, properties: Properties) -> None:
@@ -311,7 +210,7 @@ class Period(ABC):
     @property
     def iso_duration(self) -> str:
         """The standard ISO 8601 duration string of this period"""
-        return self._properties.get_iso8601()
+        return self._properties.iso_duration
 
     @property
     def tzinfo(self) -> dt.tzinfo | None:
@@ -360,7 +259,7 @@ class Period(ABC):
         Returns:
             A timedelta object, or None
         """
-        return self._properties.get_timedelta()
+        return self._properties.timedelta
 
     @property
     def pl_interval(self) -> str:
@@ -376,7 +275,7 @@ class Period(ABC):
         Returns:
             A string suitable for use with Polars methods
         """
-        return self._properties.pl_interval()
+        return self._properties.pl_interval
 
     @property
     def pl_offset(self) -> str:
@@ -391,7 +290,7 @@ class Period(ABC):
         Returns:
             A string suitable for use with Polars methods
         """
-        return self._properties.pl_offset()
+        return self._properties.pl_offset
 
     @property
     def offset(self) -> str:
@@ -401,7 +300,7 @@ class Period(ABC):
         Returns:
             A string suitable for use with Period of_duration string
         """
-        return self._properties.offset()
+        return self._properties.offset
 
     @property
     def month_offset(self) -> int:
@@ -707,91 +606,35 @@ class Period(ABC):
         return self
 
     def with_year_offset(self, year_amount: int) -> "Period":
-        """Return a Period derived from this one but with the specified year offset
-
-        Args:
-            year_amount: The year offset of the new Period
-
-        Returns:
-            A Period object
-        """
+        """Return a copy of this Period with every boundary shifted by `year_amount` years."""
         return self.with_month_offset(year_amount * 12)
 
     def with_month_offset(self, month_amount: int) -> "Period":
-        """Return a Period derived from this one but with the specified month offset
-
-        Args:
-            month_amount: The month offset of the new Period
-
-        Returns:
-            A Period object
-        """
+        """Return a copy of this Period with every boundary shifted by `month_amount` months."""
         return build_offset_period(self._properties.with_month_offset(month_amount))
 
     def with_day_offset(self, day_amount: int) -> "Period":
-        """Return a Period derived from this one but with the specified day offset
-
-        Args:
-            day_amount: The day offset of the new Period
-
-        Returns:
-            A Period object
-        """
+        """Return a copy of this Period with every boundary shifted by `day_amount` days."""
         return self.with_second_offset(day_amount * 86_400)
 
     def with_hour_offset(self, hour_amount: int) -> "Period":
-        """Return a Period derived from this one but with the specified hour offset
-
-        Args:
-            hour_amount: The hour offset of the new Period
-
-        Returns:
-            A Period object
-        """
+        """Return a copy of this Period with every boundary shifted by `hour_amount` hours."""
         return self.with_second_offset(hour_amount * 3_600)
 
     def with_minute_offset(self, minute_amount: int) -> "Period":
-        """Return a Period derived from this one but with the specified minute offset
-
-        Args:
-            minute_amount: The minute offset of the new Period
-
-        Returns:
-            A Period object
-        """
+        """Return a copy of this Period with every boundary shifted by `minute_amount` minutes."""
         return self.with_second_offset(minute_amount * 60)
 
     def with_second_offset(self, second_amount: int) -> "Period":
-        """Return a Period derived from this one but with the specified second offset
-
-        Args:
-            second_amount: The second offset of the new Period
-
-        Returns:
-            A Period object
-        """
+        """Return a copy of this Period with every boundary shifted by `second_amount` seconds."""
         return self.with_microsecond_offset(second_amount * 1_000_000)
 
     def with_microsecond_offset(self, microsecond_amount: int) -> "Period":
-        """Return a Period derived from this one but with the specified microsecond offset
-
-        Args:
-            microsecond_amount: The microsecond offset of the new Period
-
-        Returns:
-            A Period object
-        """
+        """Return a copy of this Period with every boundary shifted by `microsecond_amount` microseconds."""
         return build_offset_period(self._properties.with_microsecond_offset(microsecond_amount))
 
     def with_tzinfo(self, tzinfo: dt.tzinfo | None) -> "Period":
-        """Return a Period derived from this one but with the specified tzinfo
-
-        Args:
-            tzinfo: The tzinfo to apply to the new Period
-
-        Returns:
-            A Period object
-        """
+        """Return a copy of this Period labelled with `tzinfo`. See :doc:`/user_guide/timezones`."""
         properties = self._properties
         if properties.tzinfo == tzinfo:
             return self
@@ -977,37 +820,6 @@ class Period(ABC):
         """
         return self._properties.is_subperiod_of(other._properties)
 
-    def _validate_base_period(self, properties: Properties, expected_step: int) -> None:
-        """Validate the properties shared by every concrete "base period" subclass (i.e. every Period with no date/time
-        offset and no ordinal shift): the step must match what this subclass implements, and there must be no offset or
-        ordinal shift, since those are the responsibility of OffsetPeriod/ShiftedPeriod.
-
-        Args:
-            properties: The Properties object passed to this subclass's constructor
-            expected_step: The step this subclass implements
-
-        Raises:
-            PeriodValidationError: If any of the invariants are violated
-        """
-        if properties.step != expected_step:
-            raise PeriodValidationError(f"Illegal step: '{properties.step}'. Must be: {expected_step}.")
-
-        if properties.month_offset != 0:
-            raise PeriodValidationError(
-                f"Illegal month offset: {properties.month_offset}. Must be '0' for a '{self.__class__.__name__}'."
-            )
-
-        if properties.microsecond_offset != 0:
-            raise PeriodValidationError(
-                f"Illegal microsecond offset: {properties.microsecond_offset}. "
-                f"Must be '0' for a '{self.__class__.__name__}'."
-            )
-
-        if properties.ordinal_shift != 0:
-            raise PeriodValidationError(
-                f"Illegal ordinal shift: {properties.ordinal_shift}. Must be '0' for a '{self.__class__.__name__}'."
-            )
-
     def __str__(self) -> str:
         return self._properties.__str__()
 
@@ -1043,13 +855,50 @@ class Period(ABC):
         return self._properties.__ge__(other._properties)
 
 
-class MonthsPeriod(Period):
-    """A period of "n" months, starting at midnight on the first day of the first month of the period."""
+class BasePeriod(Period, ABC):
+    """A Period whose intervals fall on the natural boundaries of its unit.
+
+    Subclasses set `_step` to the step they implement and read `_n`, the multiplier. An offset or an ordinal
+    shift belongs to OffsetPeriod or ShiftedPeriod, which wrap one of these, so neither is legal here.
+    """
+
+    _step: ClassVar[Step]
 
     def __init__(self, properties: Properties) -> None:
+        """Store the properties and check the invariants every base period holds.
+
+        Args:
+            properties: The specification of the Period to build
+
+        Raises:
+            PeriodValidationError: If the step is not this subclass's, or there is an offset or ordinal shift
+        """
         super().__init__(properties)
-        self._validate_base_period(properties, Step.MONTHS)
+        name = type(self).__name__
+
+        if properties.step != self._step:
+            raise PeriodValidationError(f"Illegal step: '{properties.step}'. Must be: {self._step}.")
+
+        if properties.month_offset != 0:
+            raise PeriodValidationError(f"Illegal month offset: {properties.month_offset}. Must be '0' for a '{name}'.")
+
+        if properties.microsecond_offset != 0:
+            raise PeriodValidationError(
+                f"Illegal microsecond offset: {properties.microsecond_offset}. Must be '0' for a '{name}'."
+            )
+
+        if properties.ordinal_shift != 0:
+            raise PeriodValidationError(
+                f"Illegal ordinal shift: {properties.ordinal_shift}. Must be '0' for a '{name}'."
+            )
+
         self._n = properties.multiplier
+
+
+class MonthsPeriod(BasePeriod):
+    """A period of "n" months, starting at midnight on the first day of the first month of the period."""
+
+    _step = Step.MONTHS
 
     @override
     def ordinal(self, datetime_obj: dt.datetime) -> int:
@@ -1061,13 +910,10 @@ class MonthsPeriod(Period):
         return dt.datetime(year, month, 1, hour=0, minute=0, second=0, tzinfo=self.tzinfo)
 
 
-class SecondsPeriod(Period):
+class SecondsPeriod(BasePeriod):
     """A period of "n" seconds, starting at the point in the day that is evenly divisible by n seconds."""
 
-    def __init__(self, properties: Properties) -> None:
-        super().__init__(properties)
-        self._validate_base_period(properties, Step.SECONDS)
-        self._n = properties.multiplier
+    _step = Step.SECONDS
 
     @override
     def ordinal(self, datetime_obj: dt.datetime) -> int:
@@ -1081,13 +927,10 @@ class SecondsPeriod(Period):
         )
 
 
-class MicrosecondsPeriod(Period):
+class MicrosecondsPeriod(BasePeriod):
     """A period of "n" microseconds, starting at the point in the day that is evenly divisible by n microseconds."""
 
-    def __init__(self, properties: Properties) -> None:
-        super().__init__(properties)
-        self._validate_base_period(properties, Step.MICROSECONDS)
-        self._n = properties.multiplier
+    _step = Step.MICROSECONDS
 
     @override
     def ordinal(self, datetime_obj: dt.datetime) -> int:
@@ -1148,14 +991,6 @@ def build_base_period(properties: Properties) -> Period:
         A Period object
     """
     step = properties.step
-    month_offset = properties.month_offset
-    microsecond_offset = properties.microsecond_offset
-
-    if month_offset != 0:
-        raise PeriodValidationError(f"Illegal month_offset: {month_offset}. Must be '0'.")
-
-    if microsecond_offset != 0:
-        raise PeriodValidationError(f"Illegal microsecond_offset: {microsecond_offset}. Must be '0'.")
 
     if step == Step.MONTHS:
         return MonthsPeriod(properties)

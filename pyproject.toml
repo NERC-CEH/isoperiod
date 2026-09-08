@@ -84,7 +84,7 @@ select = [
 [tool.coverage.run]
 branch = true
 parallel = true
-source = ["src/", "tests/"]
+source = ["src"]
 omit = ["src/*/__main__.py"]
 
 [tool.coverage.report]

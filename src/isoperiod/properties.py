@@ -315,8 +315,9 @@ class Properties:
             ordinal_shift=0,
         ).normalise_offsets()
 
-    def get_iso8601(self) -> str:
-        """Return the ISO 8601 duration string of the period defined by this Properties object.
+    @property
+    def iso_duration(self) -> str:
+        """The ISO 8601 duration string of the period defined by this Properties object.
 
         Returns:
             The ISO 8601 duration string of this period
@@ -330,7 +331,8 @@ class Properties:
                 return month_period_name(self.multiplier)
         raise illegal_step(self.step)
 
-    def get_timedelta(self) -> dt.timedelta | None:
+    @property
+    def timedelta(self) -> dt.timedelta | None:
         """The timedelta matching this period's duration, or None if it has no fixed length.
 
         Backs :attr:`isoperiod.Period.timedelta`; see there for details.
@@ -407,6 +409,7 @@ class Properties:
         if self.ordinal_shift != 0:
             elems.append(str(self.ordinal_shift))
 
+    @property
     def pl_interval(self) -> str:
         """The step and multiplier as a Polars duration string.
 
@@ -425,6 +428,7 @@ class Properties:
             case _:
                 raise illegal_step(self.step)
 
+    @property
     def pl_offset(self) -> str:
         """The month and microsecond offsets as a Polars duration string.
 
@@ -435,6 +439,7 @@ class Properties:
         """
         return f"{self.month_offset}mo{self.microsecond_offset}us"
 
+    @property
     def offset(self) -> str:
         """The month and microsecond offsets, as the "+offset" part of a Period.of_duration string.
 
@@ -641,7 +646,7 @@ class Properties:
         A calendar month has no fixed length, so for a MONTHS step this is an approximation. It exists solely to
         put periods in "shortest first" order, which needs calendar and fixed-length periods to be comparable
         against each other. Nothing else uses it: alignment, counting and every interval calculation work off the
-        real calendar, and :meth:`get_timedelta` still returns None for a month rather than an approximation.
+        real calendar, and :attr:`timedelta` still returns None for a month rather than an approximation.
 
         Contrast :meth:`_microsecond_multiplier`, which is exact but undefined for a MONTHS step.
 
@@ -673,13 +678,9 @@ class Properties:
         agrees with `__eq__`. It does, because `step` together with the nominal length recovers `multiplier`, so
         no two unequal Properties can share a key.
 
-        Ordering cannot be left to the dataclass, which would compare the fields in declaration order and so sort
-        by `step` before `multiplier` - putting every sub-second period before every whole-second one, and every
-        fixed-length period before every calendar one, regardless of length.
-
-        `tzinfo` is carried raw rather than reduced to something orderable, so that comparing two periods alike in
-        every respect but their timezone raises TypeError, exactly as comparing a naive datetime against an aware
-        one does. Tuple comparison stops at the first field that settles the order, so the timezones of periods of
+        `tzinfo` is carried raw rather than reduced to something orderable, so that comparing two periods alike
+        in every respect but their timezone raises TypeError, as comparing a naive datetime against an aware one
+        does. Tuple comparison stops at the first field that settles the order, so the timezones of periods of
         differing length are never compared at all.
 
         Returns:

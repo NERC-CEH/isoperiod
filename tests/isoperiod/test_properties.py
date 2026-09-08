@@ -189,21 +189,21 @@ class TestGetIso8601:
     )
     def test_render(self, props: Properties, expected: str) -> None:
         """Test that each step renders through its matching iso.py period-name helper."""
-        assert props.get_iso8601() == expected
+        assert props.iso_duration == expected
 
 
 class TestGetTimedelta:
     def test_seconds_step(self) -> None:
         """Test that a seconds period maps straight onto a timedelta."""
-        assert seconds(90).get_timedelta() == dt.timedelta(seconds=90)
+        assert seconds(90).timedelta == dt.timedelta(seconds=90)
 
     def test_microseconds_step(self) -> None:
         """Test that a microseconds period splits into whole seconds plus a microseconds remainder."""
-        assert micros(1_500_000).get_timedelta() == dt.timedelta(seconds=1, microseconds=500_000)
+        assert micros(1_500_000).timedelta == dt.timedelta(seconds=1, microseconds=500_000)
 
     def test_months_step_has_no_fixed_timedelta(self) -> None:
         """Test that months vary in length, so there is no single timedelta."""
-        assert months(1).get_timedelta() is None
+        assert months(1).timedelta is None
 
 
 class TestIsEpochAgnostic:
@@ -343,11 +343,11 @@ class TestPolarsStrings:
     )
     def test_pl_interval(self, props: Properties, expected: str) -> None:
         """Test that pl_interval names the step/multiplier in Polars units."""
-        assert props.pl_interval() == expected
+        assert props.pl_interval == expected
 
     def test_pl_offset_combines_month_and_microsecond_parts(self) -> None:
         """Test that pl_offset always emits both a `mo` and a `us` term."""
-        assert months(12, month_offset=3, microsecond_offset=500_000).pl_offset() == "3mo500000us"
+        assert months(12, month_offset=3, microsecond_offset=500_000).pl_offset == "3mo500000us"
 
 
 class TestOffsetString:
@@ -363,7 +363,7 @@ class TestOffsetString:
     )
     def test_render(self, props: Properties, expected: str) -> None:
         """Test that no offset yields an empty string; otherwise a '+' prefix with the parts present."""
-        assert props.offset() == expected
+        assert props.offset == expected
 
 
 class TestStrAndRepr:
@@ -449,17 +449,17 @@ class TestStepDispatchGuards:
     @pytest.mark.parametrize(
         "call",
         [
-            lambda p: p.get_iso8601(),
-            lambda p: p.get_timedelta(),
+            lambda p: p.iso_duration,
+            lambda p: p.timedelta,
             lambda p: p._append_step_elems([]),
             lambda p: p.normalise_offsets(),
-            lambda p: p.pl_interval(),
+            lambda p: p.pl_interval,
             lambda p: p.is_epoch_agnostic(),
             lambda p: p._nominal_microseconds(),
         ],
         ids=[
-            "get_iso8601",
-            "get_timedelta",
+            "iso_duration",
+            "timedelta",
             "_append_step_elems",
             "normalise_offsets",
             "pl_interval",
