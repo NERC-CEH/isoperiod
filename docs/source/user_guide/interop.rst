@@ -8,11 +8,6 @@ Interoperability
 
     Describing a period as a string, and handing it to other tools.
 
-.. code-block:: python
-
-    from datetime import timedelta
-    from isoperiod import Period
-
 Describing a period as a string
 ===============================
 
@@ -32,25 +27,55 @@ Three representations, for three purposes:
      - ``"P1D+T9H"``
      - round-tripping through :meth:`~isoperiod.Period.of`
    * - ``repr()``
-     - ``"P1D+T9H[]"``
-     - debugging - adds timezone and ordinal shift
+     - ``"P1D+T9H"``
+     - logging and debugging - as ``str()``, plus the timezone
 
-.. code-block:: python
+.. literalinclude:: ../examples/interop.py
+   :language: python
+   :start-after: [start:string_forms]
+   :end-before: [end:string_forms]
+   :dedent:
 
-    water_day = Period.of("P1D+T9H")
+.. jupyter-execute::
+   :hide-code:
 
-    assert water_day.iso_duration == "P1D"
-    assert str(water_day) == "P1D+T9H"
-    assert repr(water_day) == "P1D+T9H[]"
+   from examples import interop
 
-    assert Period.of(str(water_day)) == water_day  # str round-trips
+   interop.string_forms()
 
-The ``repr()`` form appends the timezone in square brackets (empty when naive) and any ordinal shift, so a
-period with an origin is distinguishable from one without:
+A period with an origin renders in the ``<origin>/<duration>`` form, so it round-trips too:
 
-.. code-block:: python
+.. literalinclude:: ../examples/interop.py
+   :language: python
+   :start-after: [start:origin_round_trip]
+   :end-before: [end:origin_round_trip]
+   :dedent:
 
-    assert repr(Period.of("2024-01-01/P7D")) == "P7D+1D[]-105555"
+.. jupyter-execute::
+   :hide-code:
+
+   from examples import interop
+
+   interop.origin_round_trip()
+
+:func:`repr` differs from ``str()`` only by adding the timezone, which ``str()`` leaves out because
+:meth:`~isoperiod.Period.of` cannot read one back:
+
+.. literalinclude:: ../examples/interop.py
+   :language: python
+   :start-after: [start:repr_adds_the_timezone]
+   :end-before: [end:repr_adds_the_timezone]
+   :dedent:
+
+.. jupyter-execute::
+   :hide-code:
+
+   from examples import interop
+
+   interop.repr_adds_the_timezone()
+
+Use ``repr()`` - or ``f"{period!r}"`` - in log lines and error messages, where the timezone matters and nothing
+is going to parse the result back.
 
 .. note::
 
@@ -62,18 +87,20 @@ Converting to a timedelta
 
 A period whose step is seconds or microseconds has a fixed length, so it converts:
 
-.. code-block:: python
-
-    assert Period.of_minutes(15).timedelta == timedelta(minutes=15)
-    assert Period.of_days(1).timedelta == timedelta(days=1)
-    assert Period.of("PT0.04S").timedelta == timedelta(microseconds=40_000)
-
 Months and years do not, and return ``None`` rather than an approximation:
 
-.. code-block:: python
+.. literalinclude:: ../examples/interop.py
+   :language: python
+   :start-after: [start:to_timedelta]
+   :end-before: [end:to_timedelta]
+   :dedent:
 
-    assert Period.of_months(1).timedelta is None
-    assert Period.of_years(1).timedelta is None
+.. jupyter-execute::
+   :hide-code:
+
+   from examples import interop
+
+   interop.to_timedelta()
 
 Always check for ``None`` before doing timedelta arithmetic - or better, use
 :meth:`~isoperiod.Period.ordinal` and :meth:`~isoperiod.Period.datetime`, which work for calendar periods too.
@@ -84,28 +111,34 @@ Using periods with Polars
 Two properties emit `Polars <https://docs.pola.rs/>`_ duration strings, so a period can drive a Polars grouping
 or range directly:
 
-.. code-block:: python
+.. literalinclude:: ../examples/interop.py
+   :language: python
+   :start-after: [start:polars_duration_strings]
+   :end-before: [end:polars_duration_strings]
+   :dedent:
 
-    assert Period.of_minutes(15).pl_interval == "900s"
-    assert Period.of_months(1).pl_interval == "1mo"
-    assert Period.of("PT0.04S").pl_interval == "40000us"
+.. jupyter-execute::
+   :hide-code:
 
-    assert Period.of("P1D+T9H").pl_offset == "0mo32400000000us"
-    assert Period.of("P1Y+9M").pl_offset == "9mo0us"
+   from examples import interop
+
+   interop.polars_duration_strings()
 
 :attr:`~isoperiod.Period.pl_interval` gives the period's length, for arguments such as ``every`` and
 ``interval``; :attr:`~isoperiod.Period.pl_offset` gives its offset, for ``offset`` and ``Expr.dt.offset_by``:
 
-.. skip: next
+.. literalinclude:: ../examples/interop.py
+   :language: python
+   :start-after: [start:polars_group_by_dynamic]
+   :end-before: [end:polars_group_by_dynamic]
+   :dedent:
 
-.. code-block:: python
+.. jupyter-execute::
+   :hide-code:
 
-    import polars as pl                       # not a dependency of isoperiod
+   from examples import interop
 
-    water_day = Period.of("P1D+T9H")
+   interop.polars_group_by_dynamic()
 
-    daily = df.group_by_dynamic(
-        "timestamp",
-        every=water_day.pl_interval,
-        offset=water_day.pl_offset,
-    ).agg(pl.col("flow").mean())
+Every window starts at 09:00, so the hourly readings are grouped into hydrological days rather than calendar ones.
+The first and last are partial, because the data does not begin or end on a 09:00 boundary.

@@ -9,11 +9,11 @@ from isoperiod.exceptions import PeriodValidationError, illegal_step
 from isoperiod.iso import (
     append_month_elems,
     append_second_elems,
-    format_tzdelta,
     microsecond_period_name,
     month_period_name,
     second_period_name,
     second_string,
+    tz_label,
 )
 
 if TYPE_CHECKING:
@@ -127,19 +127,14 @@ class Properties:
                         in the period
 
         Examples:
-            .. code-block:: text
-
-                # A period of one year (P1Y) has:
-                step = Step.MONTHS and multiplier = 12
-
-                # A period of one day (P1D) has:
-                step = Step.SECONDS and multiplier = 24*60*60
-
-                # A period of fifteen minutes (PT15M) has:
-                step = Step.SECONDS and multiplier = 15*60
-
-                # A period of 25Hz (PT0.04S) has:
-                step = Step.MICROSECONDS and multiplier = 1_000_000/25
+            >>> Properties.of_step_and_multiplier(Step.MONTHS, 12).iso_duration
+            'P1Y'
+            >>> Properties.of_step_and_multiplier(Step.SECONDS, 24 * 60 * 60).iso_duration
+            'P1D'
+            >>> Properties.of_step_and_multiplier(Step.SECONDS, 15 * 60).iso_duration
+            'PT15M'
+            >>> Properties.of_step_and_multiplier(Step.MICROSECONDS, 1_000_000 // 25).iso_duration
+            'PT0.04S'
 
         Returns:
             A Properties object
@@ -212,11 +207,17 @@ class Properties:
             PeriodValidationError: If a non-month step carries a month offset
 
         Examples:
-            .. code-block:: text
+            A 13-month offset on a one-year period reduces to one month, since 13 % 12 == 1.
 
-                P1Y   offset 13 months  ->  offset 1 month    (13 % 12)
-                PT10S offset 25 seconds ->  offset 5 seconds  (25 % 10)
-                PT10S offset 30 seconds ->  no offset         (30 % 10 == 0)
+            >>> Properties.of_months(12).with_month_offset(13).month_offset
+            1
+
+            A 25-second offset on a ten-second period reduces to five, and a 30-second one to none at all.
+
+            >>> Properties.of_seconds(10).with_microsecond_offset(25_000_000).microsecond_offset
+            5000000
+            >>> Properties.of_seconds(10).with_microsecond_offset(30_000_000).microsecond_offset
+            0
         """
         new_month_offset: int = self.month_offset
         new_microsecond_offset: int = self.microsecond_offset
@@ -393,12 +394,8 @@ class Properties:
         Args:
             elems: The list of strings used to calculate the repr string
         """
-        elems.append("[")
         if self.tzinfo is not None:
-            delta = self.tzinfo.utcoffset(dt.datetime.min)
-            if delta is not None:
-                elems.append(format_tzdelta(delta))
-        elems.append("]")
+            elems.append(f"[{tz_label(self.tzinfo)}]")
 
     def _append_shift_elems(self, elems: list[str]) -> None:
         """Add the elements describing the ordinal shift to a list of strings.
@@ -407,7 +404,7 @@ class Properties:
             elems: The list of strings used to calculate the repr string
         """
         if self.ordinal_shift != 0:
-            elems.append(str(self.ordinal_shift))
+            elems.append(f"@{self.ordinal_shift}")
 
     @property
     def pl_interval(self) -> str:
@@ -614,24 +611,32 @@ class Properties:
         Examples:
             Working in minutes for legibility (the real callers pass microseconds or months):
 
-            .. code-block:: text
+            Four 15-minute intervals per hour, both on the natural boundaries.
 
-                # Four 15-minute intervals per hour, both on the natural boundaries.
-                _divisible_count(15, 60, 0, 0) == 4
+            >>> Properties._divisible_count(15, 60, 0, 0)
+            4
 
-                # Same, with both offset alike: :05 :20 :35 :50 inside :05 -> :05.
-                _divisible_count(15, 60, 5, 5) == 4
+            Same, with both offset alike: :05 :20 :35 :50 inside :05 -> :05.
 
-                # Offsets differ by 15 minutes - one whole "self" period - so they still line up:
-                # the boundaries at :05 :20 :35 :50 include :20, where "other" starts.
-                _divisible_count(15, 60, 5, 20) == 4
+            >>> Properties._divisible_count(15, 60, 5, 5)
+            4
 
-                # An hour is not a whole multiple of 25 minutes.
-                _divisible_count(25, 60, 0, 0) is None
+            Offsets differ by 15 minutes - one whole "self" period - so they still line up: the boundaries at
+            :05 :20 :35 :50 include :20, where "other" starts.
 
-                # Offsets differ by 7 minutes, which is not a whole number of 15-minute periods,
-                # so "other" starts part-way through one of "self"'s intervals.
-                _divisible_count(15, 60, 5, 12) is None
+            >>> Properties._divisible_count(15, 60, 5, 20)
+            4
+
+            An hour is not a whole multiple of 25 minutes.
+
+            >>> print(Properties._divisible_count(25, 60, 0, 0))
+            None
+
+            Offsets differ by 7 minutes, which is not a whole number of 15-minute periods, so "other" starts
+            part-way through one of "self"'s intervals.
+
+            >>> print(Properties._divisible_count(15, 60, 5, 12))
+            None
         """
         mult_q, mult_r = divmod(other_multiplier, self_multiplier)
         if mult_r != 0:

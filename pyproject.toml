@@ -27,7 +27,6 @@ dev = [
     { include-group = "lint" },
     { include-group = "test" },
     { include-group = "typecheck" },
-
     { include-group = "docs" },
 
 ]
@@ -36,9 +35,9 @@ lint = [
 ]
 test = [
     "coverage",
+    "polars>=1.44.1",
     "pytest",
     "pytest-cov",
-    "sybil[pytest]>=10.1.0",
 ]
 typecheck = [
     "pyright",
@@ -53,6 +52,8 @@ docs = [
     "sphinx-autobuild",
     "sphinx-contributors>=0.2.7",
     "myst-parser",
+    "jupyter-sphinx>=0.5.3",
+    "polars>=1.44.1",
 ]
 
 
@@ -66,7 +67,7 @@ homepage = "https://github.com/NERC-CEH/isoperiod"
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-include = ["src", "tests"]
+include = ["src", "tests", "docs/source/examples"]
 
 [tool.ruff]
 line-length = 120
@@ -85,7 +86,6 @@ select = [
 branch = true
 parallel = true
 source = ["src"]
-omit = ["src/*/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true
@@ -105,11 +105,11 @@ exclude_also = [
 ]
 
 [tool.pytest.ini_options]
-# "docs/source", "src" and the README are here so that Sybil (see conftest.py) collects the
-# documentation examples - the .rst pages, the docstrings, and the README - as tests.
-testpaths = ["tests", "docs/source", "src", "README.md"]
-# "-p no:doctest" disables pytest's own doctest plugin, as Sybil (see conftest.py) recommends
-addopts = "--import-mode=importlib --cov=src --cov-report=term-missing -p no:doctest"
+# "src" is here so that --doctest-modules collects the ">>>" examples in the docstrings, which are
+# rendered into the API reference. The user guide's examples live in docs/source/examples and are run by
+# tests/isoperiod/test_examples.py.
+testpaths = ["tests", "src"]
+addopts = "--import-mode=importlib --cov=src --cov-report=term-missing --doctest-modules"
 
 [tool.uv]
 package = true

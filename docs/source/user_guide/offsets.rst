@@ -13,17 +13,11 @@ year from 1 January. Real measurement regimes often do not. Two mechanisms move 
 different questions:
 
 **Offset**
-    *Where are the boundaries?* Shifts every boundary by a fixed amount, keeping the interval size. Written
-    ``P1D+T9H``.
+    *Where are the boundaries?* Shifts every boundary by a fixed amount, keeping the interval size.
 
 **Origin**
     *Which interval is number zero?* Pins the numbering to a chosen datetime, and aligns the boundaries so that
-    datetime is one of them. Written ``2024-01-01/P7D``.
-
-.. code-block:: python
-
-    from datetime import datetime, timezone
-    from isoperiod import Period
+    datetime is one of them.
 
 Setting an offset
 =================
@@ -62,59 +56,71 @@ Worked example: the hydrological day
 UK hydrological convention measures a "day" from 09:00 to 09:00. As a period that is a one-day interval offset by
 nine hours:
 
-.. code-block:: python
+.. literalinclude:: ../examples/offsets.py
+   :language: python
+   :start-after: [start:hydrological_day]
+   :end-before: [end:hydrological_day]
+   :dedent:
 
-    water_day = Period.of_days(1).with_hour_offset(9)
+.. jupyter-execute::
+   :hide-code:
 
-    # A reading at 07:30 belongs to the water day that began at 09:00 the previous day.
-    reading = datetime(2024, 3, 15, 7, 30)
-    assert water_day.datetime(water_day.ordinal(reading)) == datetime(2024, 3, 14, 9, 0)
+   from examples import offsets
 
-    # A reading at 10:00 belongs to the one that began this morning.
-    assert water_day.datetime(water_day.ordinal(datetime(2024, 3, 15, 10, 0))) == datetime(2024, 3, 15, 9, 0)
+   offsets.hydrological_day()
 
-    # Alignment follows the shifted boundaries.
-    assert water_day.is_aligned(datetime(2024, 3, 15, 9, 0)) == True
-    assert water_day.is_aligned(datetime(2024, 3, 15, 0, 0)) == False
+Alignment follows the shifted boundaries:
+
+.. literalinclude:: ../examples/offsets.py
+   :language: python
+   :start-after: [start:hydrological_day_alignment]
+   :end-before: [end:hydrological_day_alignment]
+   :dedent:
 
 Worked example: the water year
 ==============================
 
 The UK water year runs from 09:00 on 1 October. That is a one-year period offset by nine months and nine hours:
 
-.. code-block:: python
+.. literalinclude:: ../examples/offsets.py
+   :language: python
+   :start-after: [start:water_year]
+   :end-before: [end:water_year]
+   :dedent:
 
-    water_year = Period.of("P1Y+9MT9H")
+.. jupyter-execute::
+   :hide-code:
 
-    assert water_year.datetime(water_year.ordinal(datetime(2024, 3, 15))) == datetime(2023, 10, 1, 9, 0)
-    assert water_year.datetime(water_year.ordinal(datetime(2024, 11, 15))) == datetime(2024, 10, 1, 9, 0)
+   from examples import offsets
+
+   offsets.water_year()
 
 Offsets are accounted for when periods are compared, so a hydrological day nests cleanly inside a water year -
 while a calendar day, which straddles the 09:00 boundary every 1 October, does not:
 
-.. code-block:: python
-
-    assert Period.of("P1D+T9H").is_subperiod_of(water_year) == True
-    assert Period.of_days(1).is_subperiod_of(water_year) == False
-
-    assert Period.of_hours(1).count(Period.of("P1D+T9H")) == 24  # hours still fit a 09:00 day
-    assert Period.of_hours(1).is_subperiod_of(Period.of("P1D+T9H30M")) == False
+.. literalinclude:: ../examples/offsets.py
+   :language: python
+   :start-after: [start:offsets_when_comparing]
+   :end-before: [end:offsets_when_comparing]
+   :dedent:
 
 See :doc:`comparing` for the full rules.
 
 Inspecting an offset
 ====================
 
-.. code-block:: python
+.. literalinclude:: ../examples/offsets.py
+   :language: python
+   :start-after: [start:inspecting_an_offset]
+   :end-before: [end:inspecting_an_offset]
+   :dedent:
 
-    water_day = Period.of("P1D+T9H")
+.. jupyter-execute::
+   :hide-code:
 
-    assert water_day.has_offset() == True
-    assert water_day.month_offset == 0
-    assert water_day.microsecond_offset == 9 * 3_600 * 1_000_000
-    assert water_day.offset == "+T32400S"
-    assert water_day.iso_duration == "P1D"  # the duration alone, without the offset
-    assert str(water_day) == "P1D+T9H"      # gives duration and offset together
+   from examples import offsets
+
+   offsets.inspecting_an_offset()
 
 Setting an origin
 =================
@@ -123,20 +129,33 @@ Setting an origin
 what you need for a period with no meaningful natural boundary - e.g. a 7-day period, or an instrument started at an
 arbitrary time:
 
-.. code-block:: python
+.. literalinclude:: ../examples/offsets.py
+   :language: python
+   :start-after: [start:setting_an_origin]
+   :end-before: [end:setting_an_origin]
+   :dedent:
 
-    p = Period.of_days(7).with_origin(datetime(2024, 1, 1))
+.. jupyter-execute::
+   :hide-code:
 
-    assert p.ordinal(datetime(2024, 1, 1)) == 0
-    assert p.is_aligned(datetime(2024, 1, 1)) == True
-    assert p.datetime(1) == datetime(2024, 1, 8)
-    assert p.datetime(-1) == datetime(2023, 12, 25)
+   from examples import offsets
+
+   offsets.setting_an_origin()
 
 The ``<start>/<duration>`` string format does the same thing:
 
-.. code-block:: python
+.. literalinclude:: ../examples/offsets.py
+   :language: python
+   :start-after: [start:origin_from_a_string]
+   :end-before: [end:origin_from_a_string]
+   :dedent:
 
-    assert Period.of("2024-01-01/P7D") == Period.of_days(7).with_origin(datetime(2024, 1, 1))
+.. jupyter-execute::
+   :hide-code:
+
+   from examples import offsets
+
+   offsets.origin_from_a_string()
 
 An origin discards any offset already on the period and recomputes it from the origin datetime. If the origin carries a
 :class:`~datetime.tzinfo`, the resulting period adopts it.
@@ -159,14 +178,15 @@ Three methods remove the modifications, each returning a new period:
    * - :meth:`~isoperiod.Period.base_period`
      - both - back to the plain period the factories produce
 
-.. code-block:: python
+.. literalinclude:: ../examples/offsets.py
+   :language: python
+   :start-after: [start:removing_offsets_and_origins]
+   :end-before: [end:removing_offsets_and_origins]
+   :dedent:
 
-    p = Period.of("2024-01-01/P7D")
+.. jupyter-execute::
+   :hide-code:
 
-    assert p.base_period() == Period.of_days(7)
-    assert Period.of("P1D+T9H").base_period() == Period.of_days(1)
+   from examples import offsets
 
-    # The boundaries are unchanged; only the numbering is.
-    q = p.without_ordinal_shift()
-    assert q.is_aligned(datetime(2024, 1, 1)) == True
-    assert q.ordinal(datetime(2024, 1, 1)) != 0
+   offsets.removing_offsets_and_origins()

@@ -11,6 +11,7 @@ from typing import Any, ClassVar, override
 from isoperiod import parsing, timeline
 from isoperiod.enums import Step
 from isoperiod.exceptions import PeriodParsingError, PeriodValidationError, illegal_step
+from isoperiod.iso import tz_label
 from isoperiod.properties import Properties
 from isoperiod.timeline import (
     gregorian_seconds,
@@ -50,27 +51,34 @@ class Period(ABC):
     naive datetime with an aware one does.
 
     Examples:
-        .. code-block:: python
+        >>> from datetime import datetime, timedelta
+        >>> from isoperiod import Period
 
-            from datetime import datetime, timedelta
+        Which hour is 09:47 in, and when did that hour start and end?
 
-            p1h = Period.of_hours(1)
-            d = datetime(2024, 3, 1, 9, 47)
+        >>> pt1h = Period.of_hours(1)
+        >>> d = datetime(2024, 3, 1, 9, 47)
+        >>> n = pt1h.ordinal(d)
+        >>> pt1h.datetime(n)
+        datetime.datetime(2024, 3, 1, 9, 0)
+        >>> pt1h.datetime(n + 1)
+        datetime.datetime(2024, 3, 1, 10, 0)
 
-            # Which hour is 09:47 in, and when did that hour start and end?
-            n = p1h.ordinal(d)
-            assert p1h.datetime(n) == datetime(2024, 3, 1, 9, 0)
-            assert p1h.datetime(n + 1) == datetime(2024, 3, 1, 10, 0)
+        Ordinals are consecutive integers, so interval arithmetic is integer arithmetic.
 
-            # Ordinals are consecutive integers, so interval arithmetic is integer arithmetic.
-            assert p1h.ordinal(d) + 24 == p1h.ordinal(d + timedelta(days=1))
+        >>> pt1h.ordinal(d + timedelta(days=1)) - pt1h.ordinal(d)
+        24
 
-            # Months work the same way, despite their varying length.
-            assert Period.of_months(1).floor(datetime(2024, 3, 15)) == datetime(2024, 3, 1)
+        Months work the same way, despite their varying length.
 
-            # An offset moves every boundary: a day running 09:00 -> 09:00.
-            water_day = Period.of_days(1).with_hour_offset(9)
-            assert water_day.floor(datetime(2024, 3, 15, 7, 30)) == datetime(2024, 3, 14, 9, 0)
+        >>> Period.of_months(1).floor(datetime(2024, 3, 15))
+        datetime.datetime(2024, 3, 1, 0, 0)
+
+        An offset moves every boundary: a day running 09:00 -> 09:00.
+
+        >>> water_day = Period.of_days(1).with_hour_offset(9)
+        >>> water_day.floor(datetime(2024, 3, 15, 7, 30))
+        datetime.datetime(2024, 3, 14, 9, 0)
     """
 
     @staticmethod
@@ -365,35 +373,34 @@ class Period(ABC):
                 reachable for a period with an offset, at the very start of the timeline.
 
         Examples:
-            .. code-block:: python
+            >>> from datetime import datetime
 
-                from datetime import datetime
+            Every datetime in March 2024 shares one ordinal ...
 
-                p1m = Period.of_months(1)
-                d = datetime(2024, 3, 15, 9, 47)
+            >>> p1m = Period.of_months(1)
+            >>> d = datetime(2024, 3, 15, 9, 47)
+            >>> n = p1m.ordinal(d)
+            >>> n == p1m.ordinal(datetime(2024, 3, 1)) == p1m.ordinal(datetime(2024, 3, 31, 23, 59))
+            True
 
-                # Every datetime in March 2024 shares one ordinal ...
-                n = p1m.ordinal(d)
-                assert n == p1m.ordinal(datetime(2024, 3, 1))
-                assert n == p1m.ordinal(datetime(2024, 3, 31, 23, 59))
+            ... which Period.datetime() turns back into the start of that month.
 
-                # ... which Period.datetime() turns back into the start of that month.
-                assert p1m.datetime(n) == datetime(2024, 3, 1)
-                assert p1m.datetime(n) <= d < p1m.datetime(n + 1)
+            >>> p1m.datetime(n)
+            datetime.datetime(2024, 3, 1, 0, 0)
+            >>> p1m.datetime(n) <= d < p1m.datetime(n + 1)
+            True
 
         Note:
             An ordinal only means anything to the Period that produced it. Each period numbers the timeline in
             its own units, and feeding one period's ordinal to another's :meth:`datetime` gives a wrong answer
             rather than an error:
 
-            .. code-block:: python
-
-                from datetime import datetime
-
-                n = Period.of_months(1).ordinal(datetime(2024, 3, 15))
-                assert n == 24_290  # months, not days
-
-                assert Period.of_days(1).datetime(n) == datetime(67, 7, 3)  # nonsense, silently
+            >>> from datetime import datetime
+            >>> n = Period.of_months(1).ordinal(datetime(2024, 3, 15))
+            >>> n
+            24290
+            >>> Period.of_days(1).datetime(n)
+            datetime.datetime(67, 7, 3, 0, 0)
         """
 
     @abstractmethod
@@ -413,15 +420,13 @@ class Period(ABC):
                 but datetimes are not, so the extremes of the timeline are unreachable.
 
         Examples:
-            .. code-block:: python
-
-                from datetime import datetime
-
-                p1h = Period.of_hours(1)
-                n = p1h.ordinal(datetime(2024, 3, 1, 9, 47))
-
-                assert p1h.datetime(n) == datetime(2024, 3, 1, 9, 0)       # start of the interval
-                assert p1h.datetime(n + 1) == datetime(2024, 3, 1, 10, 0)  # start of the next one
+            >>> from datetime import datetime
+            >>> pt1h = Period.of_hours(1)
+            >>> n = pt1h.ordinal(datetime(2024, 3, 1, 9, 47))
+            >>> pt1h.datetime(n)
+            datetime.datetime(2024, 3, 1, 9, 0)
+            >>> pt1h.datetime(n + 1)
+            datetime.datetime(2024, 3, 1, 10, 0)
         """
 
     def floor(self, datetime_obj: dt.datetime) -> dt.datetime:
@@ -439,21 +444,23 @@ class Period(ABC):
             Period's own tzinfo
 
         Examples:
-            .. code-block:: python
+            >>> from datetime import datetime
+            >>> reading = datetime(2024, 3, 15, 9, 47, 30)
+            >>> Period.of_minutes(15).floor(reading)
+            datetime.datetime(2024, 3, 15, 9, 45)
+            >>> Period.of_months(1).floor(reading)
+            datetime.datetime(2024, 3, 1, 0, 0)
 
-                from datetime import datetime
+            An offset moves every boundary, and with it what a timestamp floors to.
 
-                reading = datetime(2024, 3, 15, 9, 47, 30)
+            >>> Period.of_days(1).with_hour_offset(9).floor(datetime(2024, 3, 15, 7, 30))
+            datetime.datetime(2024, 3, 14, 9, 0)
 
-                assert Period.of_minutes(15).floor(reading) == datetime(2024, 3, 15, 9, 45)
-                assert Period.of_months(1).floor(reading) == datetime(2024, 3, 1)
+            A floored datetime always lands on a boundary.
 
-                # An offset moves every boundary, and with it what a timestamp floors to.
-                water_day = Period.of_days(1).with_hour_offset(9)
-                assert water_day.floor(datetime(2024, 3, 15, 7, 30)) == datetime(2024, 3, 14, 9, 0)
-
-                # A floored datetime always lands on a boundary.
-                assert Period.of_minutes(15).is_aligned(Period.of_minutes(15).floor(reading))
+            >>> pt15m = Period.of_minutes(15)
+            >>> pt15m.is_aligned(pt15m.floor(reading))
+            True
         """
         return self.datetime(self.ordinal(datetime_obj))
 
@@ -471,20 +478,14 @@ class Period(ABC):
             A (start, end) tuple of datetimes, both carrying this Period's own tzinfo
 
         Examples:
-            .. code-block:: python
+            >>> from datetime import datetime
+            >>> Period.of_hours(1).interval(datetime(2024, 3, 15, 9, 47))
+            (datetime.datetime(2024, 3, 15, 9, 0), datetime.datetime(2024, 3, 15, 10, 0))
 
-                from datetime import datetime
+            Calendar intervals work the same way, despite their varying length.
 
-                start, end = Period.of_hours(1).interval(datetime(2024, 3, 15, 9, 47))
-
-                assert start == datetime(2024, 3, 15, 9, 0)
-                assert end == datetime(2024, 3, 15, 10, 0)
-
-                # Calendar intervals work the same way, despite their varying length.
-                start, end = Period.of_months(1).interval(datetime(2024, 2, 10))
-
-                assert start == datetime(2024, 2, 1)
-                assert end == datetime(2024, 3, 1)
+            >>> Period.of_months(1).interval(datetime(2024, 2, 10))
+            (datetime.datetime(2024, 2, 1, 0, 0), datetime.datetime(2024, 3, 1, 0, 0))
 
         See also:
             :meth:`range`, which yields interval starts this can turn into bounded intervals.
@@ -508,32 +509,30 @@ class Period(ABC):
             The first instant of each overlapping interval, in order.
 
         Examples:
-            .. code-block:: python
+            >>> from datetime import datetime
+            >>> pt6h = Period.of_hours(6)
+            >>> for start in pt6h.range(datetime(2024, 3, 1), datetime(2024, 3, 2)):
+            ...     print(start)
+            2024-03-01 00:00:00
+            2024-03-01 06:00:00
+            2024-03-01 12:00:00
+            2024-03-01 18:00:00
 
-                from datetime import datetime
+            A window that starts mid-interval still yields that whole interval ...
 
-                p6h = Period.of_hours(6)
+            >>> for start in pt6h.range(datetime(2024, 3, 1, 3), datetime(2024, 3, 1, 13)):
+            ...     print(start)
+            2024-03-01 00:00:00
+            2024-03-01 06:00:00
+            2024-03-01 12:00:00
 
-                assert list(p6h.range(datetime(2024, 3, 1), datetime(2024, 3, 2))) == [
-                    datetime(2024, 3, 1, 0),
-                    datetime(2024, 3, 1, 6),
-                    datetime(2024, 3, 1, 12),
-                    datetime(2024, 3, 1, 18),
-                ]
+            ... and calendar periods need no special handling.
 
-                # A window that starts mid-interval still yields that whole interval ...
-                assert list(p6h.range(datetime(2024, 3, 1, 3), datetime(2024, 3, 1, 13))) == [
-                    datetime(2024, 3, 1, 0),
-                    datetime(2024, 3, 1, 6),
-                    datetime(2024, 3, 1, 12),
-                ]
-
-                # ... and calendar periods need no special handling.
-                assert list(Period.of_months(1).range(datetime(2024, 1, 15), datetime(2024, 4, 1))) == [
-                    datetime(2024, 1, 1),
-                    datetime(2024, 2, 1),
-                    datetime(2024, 3, 1),
-                ]
+            >>> for start in Period.of_months(1).range(datetime(2024, 1, 15), datetime(2024, 4, 1)):
+            ...     print(start)
+            2024-01-01 00:00:00
+            2024-02-01 00:00:00
+            2024-03-01 00:00:00
         """
         if naive(end) <= naive(start):
             return
@@ -558,18 +557,20 @@ class Period(ABC):
             True if the datetime lies at the start of an interval, False otherwise
 
         Examples:
-            .. code-block:: python
+            >>> from datetime import datetime
+            >>> pt1h = Period.of_hours(1)
+            >>> pt1h.is_aligned(datetime(2024, 3, 1, 9, 0))
+            True
+            >>> pt1h.is_aligned(datetime(2024, 3, 1, 9, 47))
+            False
 
-                from datetime import datetime
+            An offset moves every boundary, and with it what counts as aligned.
 
-                p1h = Period.of_hours(1)
-                assert p1h.is_aligned(datetime(2024, 3, 1, 9, 0)) == True
-                assert p1h.is_aligned(datetime(2024, 3, 1, 9, 47)) == False
-
-                # An offset moves every boundary, and with it what counts as aligned.
-                water_day = Period.of_days(1).with_hour_offset(9)
-                assert water_day.is_aligned(datetime(2024, 3, 1, 9, 0)) == True
-                assert water_day.is_aligned(datetime(2024, 3, 1, 0, 0)) == False
+            >>> water_day = Period.of_days(1).with_hour_offset(9)
+            >>> water_day.is_aligned(datetime(2024, 3, 1, 9, 0))
+            True
+            >>> water_day.is_aligned(datetime(2024, 3, 1, 0, 0))
+            False
         """
         ordinal = self.ordinal(datetime_obj)
         datetime_obj2 = self.datetime(ordinal)
@@ -589,19 +590,18 @@ class Period(ABC):
             A Period with the same step and multiplier as this one, but no date/time offset and no ordinal shift
 
         Examples:
-            .. code-block:: python
+            >>> from datetime import datetime
 
-                from datetime import datetime
+            An offset is discarded ...
 
-                assert Period.of_days(1).base_period() == Period.of_days(1)
+            >>> water_day = Period.of_days(1).with_hour_offset(9)
+            >>> water_day.base_period()
+            P1D
 
-                # An offset is discarded ...
-                water_day = Period.of_days(1).with_hour_offset(9)
-                assert water_day.base_period() == Period.of_days(1)
+            ... and so is an origin, together with any offset beneath it.
 
-                # ... and so is an origin, together with any offset beneath it.
-                shifted = water_day.with_origin(datetime(1883, 1, 1))
-                assert shifted.base_period() == Period.of_days(1)
+            >>> water_day.with_origin(datetime(1883, 1, 1)).base_period()
+            P1D
         """
         return self
 
@@ -677,15 +677,13 @@ class Period(ABC):
         The date/time offset and ordinal shift of this Period are discarded and recalculated such that for the resulting
         Period object the following are True:
 
-        .. code-block:: python
-
-            from datetime import datetime
-
-            origin_date_time = datetime(2024, 1, 1)
-            period = Period.of_days(7).with_origin(origin_date_time)
-
-            assert period.ordinal(origin_date_time) == 0
-            assert period.is_aligned(origin_date_time) == True
+        >>> from datetime import datetime
+        >>> origin_date_time = datetime(2024, 1, 1)
+        >>> period = Period.of_days(7).with_origin(origin_date_time)
+        >>> period.ordinal(origin_date_time)
+        0
+        >>> period.is_aligned(origin_date_time)
+        True
 
         Args:
             origin_date_time: The datetime to become ordinal 0, and the start of an interval
@@ -745,32 +743,44 @@ class Period(ABC):
             timeline; or None if no such number exists
 
         Examples:
-            .. code-block:: python
+            >>> pt1h, p1d, p1m, p1y = (
+            ...     Period.of_hours(1),
+            ...     Period.of_days(1),
+            ...     Period.of_months(1),
+            ...     Period.of_years(1),
+            ... )
 
-                p1h = Period.of_hours(1)
-                p1d = Period.of_days(1)
-                p1m = Period.of_months(1)
-                p1y = Period.of_years(1)
+            The ordinary case: a whole number, the same for every interval on the timeline.
 
-                # The ordinary case: a whole number, the same for every interval on the timeline.
-                assert p1h.count(p1d) == 24
-                assert p1m.count(p1y) == 12
+            >>> pt1h.count(p1d)
+            24
+            >>> p1m.count(p1y)
+            12
 
-                # Aligned, but a month is 28-31 days, so no constant count exists.
-                assert p1d.count(p1m) is None
-                assert p1d.is_subperiod_of(p1m) == True
+            Aligned, but a month is 28-31 days, so no constant count exists.
 
-                # A larger period never fits inside a smaller one.
-                assert p1d.count(p1h) is None
-                assert p1d.is_subperiod_of(p1h) == False
+            >>> print(p1d.count(p1m))
+            None
+            >>> p1d.is_subperiod_of(p1m)
+            True
 
-                # An offset on one of them breaks the alignment ...
-                p1h_1m = Period.of_hours(1).with_minute_offset(1)
-                assert p1h_1m.count(p1d) is None
+            A larger period never fits inside a smaller one.
 
-                # ... but not if both carry the same offset.
-                p1d_1m = Period.of_days(1).with_minute_offset(1)
-                assert p1h_1m.count(p1d_1m) == 24
+            >>> print(p1d.count(pt1h))
+            None
+            >>> p1d.is_subperiod_of(pt1h)
+            False
+
+            An offset on one of them breaks the alignment ...
+
+            >>> pt1h_t1m = Period.of_hours(1).with_minute_offset(1)
+            >>> print(pt1h_t1m.count(p1d))
+            None
+
+            ... but not if both carry the same offset.
+
+            >>> pt1h_t1m.count(Period.of_days(1).with_minute_offset(1))
+            24
 
         See also:
             :meth:`is_subperiod_of`, for whether the intervals nest at all.
@@ -795,36 +805,68 @@ class Period(ABC):
             True if every interval of this period lies within one interval of `other`, False otherwise
 
         Examples:
-            .. code-block:: python
+            >>> pt1h, p1d, p1m = Period.of_hours(1), Period.of_days(1), Period.of_months(1)
 
-                p1h = Period.of_hours(1)
-                p1d = Period.of_days(1)
-                p1m = Period.of_months(1)
+            An hour never straddles a midnight boundary, nor a day a month boundary - even though months
+            vary in length.
 
-                # An hour never straddles a midnight boundary.
-                assert p1h.is_subperiod_of(p1d) == True
+            >>> pt1h.is_subperiod_of(p1d)
+            True
+            >>> p1d.is_subperiod_of(p1m)
+            True
 
-                # Nor does a day straddle a month boundary, even though months vary in length.
-                assert p1d.is_subperiod_of(p1m) == True
+            The larger period is never contained by the smaller.
 
-                # The larger period is never contained by the smaller.
-                assert p1d.is_subperiod_of(p1h) == False
+            >>> p1d.is_subperiod_of(pt1h)
+            False
 
-                # Offsetting one of them makes its intervals straddle the other's boundaries ...
-                p1h_1m = Period.of_hours(1).with_minute_offset(1)
-                assert p1h_1m.is_subperiod_of(p1d) == False
+            Offsetting one of them makes its intervals straddle the other's boundaries ...
 
-                # ... unless both are offset alike.
-                p1d_1m = Period.of_days(1).with_minute_offset(1)
-                assert p1h_1m.is_subperiod_of(p1d_1m) == True
+            >>> pt1h_t1m = Period.of_hours(1).with_minute_offset(1)
+            >>> pt1h_t1m.is_subperiod_of(p1d)
+            False
+
+            ... unless both are offset alike.
+
+            >>> pt1h_t1m.is_subperiod_of(Period.of_days(1).with_minute_offset(1))
+            True
         """
         return self._properties.is_subperiod_of(other._properties)
 
+    def _origin_string(self) -> str | None:
+        """Return this period's origin as an ISO 8601 date or datetime, or None if it has no usable one.
+
+        A period with an ordinal shift numbers the interval starting at its origin zero, so the origin is
+        ``datetime(0)``. The time is dropped when the origin falls at midnight, and the period's tzinfo is left
+        off, since :meth:`of` reads a timezone from an origin that carries one.
+
+        Returns:
+            The origin as an ISO 8601 string, or None if this period has no ordinal shift or its ordinal zero
+            falls outside the datetime range
+        """
+        if self._properties.ordinal_shift == 0:
+            return None
+        try:
+            origin = naive(self.datetime(0))
+        except (ValueError, OverflowError):
+            return None
+        if origin.time() == dt.time.min:
+            return origin.date().isoformat()
+        return origin.isoformat()
+
     def __str__(self) -> str:
-        return self._properties.__str__()
+        origin = self._origin_string()
+        if origin is None:
+            return self._properties.__str__()
+        return f"{origin}/{self.iso_duration}"
 
     def __repr__(self) -> str:
-        return self._properties.__repr__()
+        origin = self._origin_string()
+        if origin is None:
+            return self._properties.__repr__()
+        tzinfo = self.tzinfo
+        suffix = f"[{tz_label(tzinfo)}]" if tzinfo is not None else ""
+        return f"{origin}/{self.iso_duration}{suffix}"
 
     def __hash__(self) -> int:
         return self._properties.__hash__()

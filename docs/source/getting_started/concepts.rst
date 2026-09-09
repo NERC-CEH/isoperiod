@@ -40,17 +40,6 @@ Two methods map between the two views of the timeline:
 - :meth:`~isoperiod.Period.ordinal` takes a datetime and returns the ordinal of the interval containing it.
 - :meth:`~isoperiod.Period.datetime` takes an ordinal and returns the **first instant** of that interval.
 
-.. code-block:: python
-
-    from datetime import datetime
-    from isoperiod import Period
-
-    p1h = Period.of_hours(1)
-    n = p1h.ordinal(datetime(2024, 3, 1, 9, 47))
-
-    assert p1h.datetime(n) == datetime(2024, 3, 1, 9, 0)       # start of that hour
-    assert p1h.datetime(n + 1) == datetime(2024, 3, 1, 10, 0)  # start of the next
-
 **Why it matters:**
 
 - **Interval arithmetic becomes integer arithmetic.** "The interval three steps back" is ``n - 3``, whether a step
@@ -142,16 +131,18 @@ Origin
 **What it is:** the datetime that gets ordinal ``0``. Setting an origin does two things at once: it pins the
 numbering, and it aligns the interval boundaries so that the origin *is* a boundary.
 
-.. code-block:: python
+.. literalinclude:: ../examples/concepts.py
+   :language: python
+   :start-after: [start:origins]
+   :end-before: [end:origins]
+   :dedent:
 
-    from datetime import datetime
-    from isoperiod import Period
+.. jupyter-execute::
+   :hide-code:
 
-    p = Period.of("2024-01-01/P7D")     # 7-day intervals, counted from 1 Jan 2024
+   from examples import concepts
 
-    assert p.ordinal(datetime(2024, 1, 1)) == 0
-    assert p.datetime(1) == datetime(2024, 1, 8)
-    assert p.datetime(-1) == datetime(2023, 12, 25)
+   concepts.origins()
 
 **Why it matters:** for periods that have no meaningful natural boundary - a 7-day period, a 10-minute period on
 an instrument started at an arbitrary time - the origin is what fixes the grid. An offset changes *where the
@@ -163,54 +154,15 @@ Alignment
 **What it is:** a datetime is *aligned* to a period when it lands exactly on one of that period's interval
 boundaries.
 
-.. code-block:: python
-
-    from datetime import datetime
-    from isoperiod import Period
-
-    p1h = Period.of_hours(1)
-    assert p1h.is_aligned(datetime(2024, 3, 1, 9, 0)) == True
-    assert p1h.is_aligned(datetime(2024, 3, 1, 9, 47)) == False
+.. literalinclude:: ../examples/concepts.py
+   :language: python
+   :start-after: [start:alignment]
+   :end-before: [end:alignment]
+   :dedent:
 
 **Why it matters:** it is the validation step for incoming data. A series claiming to be hourly should have every
 timestamp on the hour; a hydrological day series should sit on 09:00. Because the check runs against the period
 itself, offsets are handled without extra code.
-
-Subperiods and counts
-=====================
-
-**What it is:** two questions about how one period nests inside another.
-
-:meth:`~isoperiod.Period.is_subperiod_of`
-    Does every interval of this period fall wholly inside a single interval of the other, never straddling a
-    boundary?
-
-:meth:`~isoperiod.Period.count`
-    How many intervals of this period fit into each interval of the other?
-
-.. code-block:: python
-
-    from isoperiod import Period
-
-    p1h, p1d, p1m, p1y = Period.of_hours(1), Period.of_days(1), Period.of_months(1), Period.of_years(1)
-
-    assert p1h.count(p1d) == 24  # a constant count
-    assert p1m.count(p1y) == 12
-
-    assert p1d.count(p1m) is None  # nests cleanly, but months hold 28-31 days
-    assert p1d.count(p1h) is None  # the larger period never fits in the smaller
-
-    assert p1d.is_subperiod_of(p1m) == True  # no day ever straddles a month boundary
-    assert p1d.is_subperiod_of(p1h) == False
-
-The two methods are deliberately separate. :meth:`~isoperiod.Period.count` answers "how many?", and returns
-``None`` whenever there is no single answer - whether because the periods do not line up at all, or because
-they line up but the count varies. :meth:`~isoperiod.Period.is_subperiod_of` answers "does it nest?", which is
-what tells those two cases apart.
-
-**Why it matters:** this can help when aggregating timeseries data. Summing 15-minute values into hours is well defined
-because 15 minutes is a subperiod of an hour with a constant count of four; summing them into months is well
-defined too, but the number of contributing values differs month to month.
 
 Time zones
 ==========
@@ -230,13 +182,11 @@ Epoch-agnostic periods
 ``P1D``, ``PT15M`` and ``P1M`` are *epoch agnostic* - their length divides evenly into the fixed unit above them
 (a day, a year). ``P7D`` is not: which seven days form an interval depends entirely on where you begin counting.
 
-.. code-block:: python
-
-    from isoperiod import Period
-
-    assert Period.of_days(1).is_epoch_agnostic() == True
-    assert Period.of_minutes(15).is_epoch_agnostic() == True
-    assert Period.of_days(7).is_epoch_agnostic() == False
+.. literalinclude:: ../examples/concepts.py
+   :language: python
+   :start-after: [start:epoch_agnosticism]
+   :end-before: [end:epoch_agnosticism]
+   :dedent:
 
 **Why it matters:** an epoch-agnostic period is safe to exchange between systems on its own - everyone agrees on
 where its boundaries fall. One that is not needs an explicit origin alongside it to be unambiguous, so exchange it
