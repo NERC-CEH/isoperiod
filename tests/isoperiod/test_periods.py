@@ -12,6 +12,7 @@ from isoperiod.periods import (
     ShiftedPeriod,
     build_base_period,
     build_offset_period,
+    build_shifted_period,
 )
 from isoperiod.properties import Properties
 
@@ -167,6 +168,23 @@ class TestStrAndRepr:
     def test_repr_includes_timezone(self) -> None:
         """Test that repr() appends the timezone in square brackets."""
         assert repr(Period.of_days(1).with_tzinfo(dt.UTC)) == "P1D[Z]"
+
+    def test_repr_of_a_naive_period_matches_str(self) -> None:
+        """Test that with no timezone to report, repr() adds nothing to str()."""
+        p1d = Period.of_days(1)
+        assert repr(p1d) == str(p1d) == "P1D"
+
+    def test_repr_of_an_origin_period_shows_the_origin(self) -> None:
+        """Test that a period with an origin reprs in the "<origin>/<duration>" form, timezone included."""
+        p7d = Period.of("2024-01-01/P7D")
+        assert repr(p7d) == "2024-01-01/P7D"
+        assert repr(p7d.with_tzinfo(dt.UTC)) == "2024-01-01/P7D[Z]"
+
+    def test_repr_falls_back_to_the_raw_shift_when_the_origin_is_unreachable(self) -> None:
+        """Test that a shift whose ordinal zero lies outside the datetime range still reprs, rather than raising."""
+        unreachable = build_shifted_period(Properties.of_seconds(86_400).with_ordinal_shift(10**9))
+        assert str(unreachable) == "P1D"
+        assert repr(unreachable) == "P1D@1000000000"
 
     @pytest.mark.parametrize(
         "period",
@@ -905,7 +923,20 @@ class TestWithOrigin:
     def test_derives_the_offset_string(self) -> None:
         """Test that the origin's sub-period part becomes the offset string."""
         origin = dt.datetime(1457, 3, 6, 9, 8, 1, 123_456)
-        assert str(Period.of_minutes(15).with_origin(origin)) == "PT15M+T8M1.123456S"
+        shifted = Period.of_minutes(15).with_origin(origin)
+        assert str(shifted.without_ordinal_shift()) == "PT15M+T8M1.123456S"
+
+    def test_str_is_the_origin_form(self) -> None:
+        """Test that a period with an origin renders as "<origin>/<duration>", and parses back."""
+        shifted = Period.of_days(7).with_origin(dt.datetime(2024, 1, 1))
+        assert str(shifted) == "2024-01-01/P7D"
+        assert Period.of(str(shifted)) == shifted
+
+    def test_str_keeps_the_time_when_the_origin_is_not_midnight(self) -> None:
+        """Test that an origin part-way through a day keeps its time, and still parses back."""
+        shifted = Period.of_minutes(15).with_origin(dt.datetime(2024, 2, 29, 9, 30))
+        assert str(shifted) == "2024-02-29T09:30:00/PT15M"
+        assert Period.of(str(shifted)) == shifted
 
     def test_month_step_origin_derives_month_and_time_offset(self) -> None:
         """Test that a water-year origin (Oct 1, 09:00) is ordinal 0 and aligned for a yearly period."""

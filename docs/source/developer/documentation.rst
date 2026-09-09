@@ -17,6 +17,7 @@ Our documentation is organized as follows:
     │   ├── developer/         # Developer guides (like this one)
     │   ├── getting_started/   # Installation and basic usage
     │   ├── user_guide/        # In-depth guides for features
+    │   ├── examples/          # Runnable code the guide pages include
     │   ├── conf.py            # Sphinx configuration
     │   └── index.rst          # Main index page
     └── Makefile              # Build commands for Unix
@@ -47,50 +48,74 @@ To add a new page to the documentation:
 Code Examples
 =============
 
-Examples are written inline, as ordinary ``code-block:: python`` directives, and are **executed as part of the
-test suite**. `Sybil <https://sybil.readthedocs.io/>`_, configured in ``conftest.py``, collects every Python
-example and runs it as a test:
+User guide examples
+-------------------
 
-- the reST pages under ``docs/source``
-- the docstrings in ``src/isoperiod``, which are rendered into the API reference
-- the fenced ``python`` blocks in ``README.md``
+The Python for every guide page lives in ``docs/source/examples/``, one module per page. Each example is a
+function whose body is wrapped in region markers:
 
-An example that raises, or whose ``assert`` no longer holds, fails the build. This is what stops the
-documentation drifting away from the code.
+.. code-block:: python
 
-Three conventions follow from that.
+    def flooring() -> None:
+        """Snap a timestamp down onto the grid of several periods."""
+        # [start:flooring]
+        d = datetime(2024, 3, 15, 9, 47, 30)
 
-**State the expected result with an** ``assert``.
-    An assertion is both the clearest way to show a reader what a call returns, and the thing that catches a
-    changed value later. Prefer it to a comment.
+        print(Period.of_minutes(15).floor(d))
+        # [end:flooring]
 
-**Examples in a documentation page share a namespace, in order.**
-    Each document's examples run in sequence in one namespace, so an example may use names bound by an earlier one.
-    Nothing carries over between documents, so the first example on a page must import what it needs.
+The page shows that region with ``literalinclude`` and renders its output with ``jupyter-execute``:
 
-**Docstring examples must stand alone.**
-    A docstring example should import everything it uses, exactly as a reader would have to.
+.. code-block:: rst
 
-Excluding an example
---------------------
+    .. literalinclude:: ../examples/intervals.py
+       :language: python
+       :start-after: [start:flooring]
+       :end-before: [end:flooring]
+       :dedent:
 
-Occasionally an example cannot run - it needs an optional dependency, or is deliberately illustrative. Put a
-``.. skip: next`` comment on the line above the ``code-block`` directive, and Sybil will leave it alone. The
-comment renders as nothing, so the page is unchanged.
+    .. jupyter-execute::
+       :hide-code:
 
-Use sparingly: an example should be tested unless absolutely necessary.
+       intervals.flooring()
 
-Running the check
------------------
+Because the markers sit inside the function, the code shown is the code that ran, and the output beneath it is
+generated at build time rather than typed out. Setup that is not the point of the example goes *above* the
+``# [start:...]`` marker, so it runs but is not shown.
 
-The examples run with the rest of the suite:
+Docstring examples
+------------------
+
+Docstrings use standard ``>>>`` doctests, with the expected output written beneath the call:
+
+.. code-block:: python
+
+    Examples:
+        >>> from datetime import datetime
+        >>> Period.of_minutes(15).floor(datetime(2024, 3, 15, 9, 47, 30))
+        datetime.datetime(2024, 3, 15, 9, 45)
+
+These are collected by pytest's ``--doctest-modules``, so a changed return value fails the suite. The module's
+own globals are in scope, but import what a reader would need anyway.
+
+Running the checks
+------------------
+
+Both run with the rest of the suite:
 
 .. code-block:: bash
 
     pytest
 
-To run only the examples from one page:
+To run just the docstring examples, or just the guide examples:
 
 .. code-block:: bash
 
-    pytest docs/source/user_guide/offsets.rst
+    pytest src/isoperiod/periods.py
+    pytest tests/isoperiod/test_examples.py
+
+A broken example also fails the documentation build, since ``jupyter-execute`` runs it:
+
+.. code-block:: bash
+
+    make -C docs html

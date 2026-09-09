@@ -39,11 +39,12 @@ def second_string(seconds: int, microseconds: int) -> str:
         A string representing seconds and microseconds that can be used in an ISO 8601 duration string
 
     Examples:
-        .. code-block:: text
-
-            second_string(30, 0)       -> "30"
-            second_string(1, 500_000)  -> "1.5"     (trailing zeros trimmed)
-            second_string(10, 123_400) -> "10.1234"
+        >>> second_string(30, 0)
+        '30'
+        >>> second_string(1, 500_000)
+        '1.5'
+        >>> second_string(10, 123_400)
+        '10.1234'
     """
     if microseconds == 0:
         return str(seconds)
@@ -63,11 +64,12 @@ def append_second_elems(elems: list[str], seconds: int, microseconds: int) -> li
         The amended list of strings
 
     Examples (joining the result of appending onto ``["P"]``):
-        .. code-block:: text
-
-            append_second_elems(["P"], 90, 0)      -> "PT1M30S"
-            append_second_elems(["P"], 90_061, 0)  -> "P1DT1H1M1S"
-            append_second_elems(["P"], 0, 500_000) -> "PT0.5S"
+        >>> "".join(append_second_elems(["P"], 90, 0))
+        'PT1M30S'
+        >>> "".join(append_second_elems(["P"], 90_061, 0))
+        'P1DT1H1M1S'
+        >>> "".join(append_second_elems(["P"], 0, 500_000))
+        'PT0.5S'
     """
     days, seconds_in_day = divmod(seconds, 86_400)
     if days > 0:
@@ -97,10 +99,10 @@ def append_month_elems(elems: list[str], months: int) -> list[str]:
         The amended list of strings
 
     Examples (joining the result of appending onto ``["P"]``):
-        .. code-block:: text
-
-            append_month_elems(["P"], 6)  -> "P6M"
-            append_month_elems(["P"], 13) -> "P1Y1M"
+        >>> "".join(append_month_elems(["P"], 6))
+        'P6M'
+        >>> "".join(append_month_elems(["P"], 13))
+        'P1Y1M'
     """
     years, months_in_year = divmod(months, 12)
     if years > 0:
@@ -121,10 +123,10 @@ def microsecond_period_name(total_microseconds: int) -> str:
         of n-microseconds
 
     Examples:
-        .. code-block:: text
-
-            microsecond_period_name(1)         -> "PT0.000001S"
-            microsecond_period_name(1_500_000) -> "PT1.5S"
+        >>> microsecond_period_name(1)
+        'PT0.000001S'
+        >>> microsecond_period_name(1_500_000)
+        'PT1.5S'
     """
     seconds, microseconds = divmod(total_microseconds, 1_000_000)
     return "".join(append_second_elems(["P"], seconds, microseconds))
@@ -141,10 +143,10 @@ def second_period_name(seconds: int) -> str:
         of n-seconds
 
     Examples:
-        .. code-block:: text
-
-            second_period_name(3_600)  -> "PT1H"
-            second_period_name(86_400) -> "P1D"
+        >>> second_period_name(3_600)
+        'PT1H'
+        >>> second_period_name(86_400)
+        'P1D'
     """
     return "".join(append_second_elems(["P"], seconds, 0))
 
@@ -160,12 +162,51 @@ def month_period_name(months: int) -> str:
         of n-months
 
     Examples:
-        .. code-block:: text
-
-            month_period_name(3)  -> "P3M"
-            month_period_name(18) -> "P1Y6M"
+        >>> month_period_name(3)
+        'P3M'
+        >>> month_period_name(18)
+        'P1Y6M'
     """
     return "".join(append_month_elems(["P"], months))
+
+
+# A modern, unambiguous instant at which to sample a fixed UTC offset. Sampling at datetime.min would pick up
+# the Local Mean Time a zone used before standard time was adopted.
+_TZ_REFERENCE = dt.datetime(2000, 1, 1)
+
+
+def tz_label(tzinfo: dt.tzinfo) -> str:
+    """Return a short, stable name for a tzinfo object, for use in a repr.
+
+    A named zone (:class:`zoneinfo.ZoneInfo`) is rendered by its key, a fixed-offset zone in ISO 8601 form, and
+    anything else by its class name. Never raises, and never returns an empty string, so that a period carrying a
+    timezone can always be told apart from a naive one.
+
+    Args:
+        tzinfo: The timezone to name
+
+    Returns:
+        A non-empty label for the timezone
+
+    Examples:
+        >>> from zoneinfo import ZoneInfo
+        >>> tz_label(ZoneInfo("Europe/London"))
+        'Europe/London'
+        >>> tz_label(dt.timezone.utc)
+        'Z'
+        >>> tz_label(dt.timezone(dt.timedelta(hours=5, minutes=30)))
+        '+05:30'
+    """
+    key = getattr(tzinfo, "key", None)
+    if isinstance(key, str) and key:
+        return key
+    try:
+        delta = tzinfo.utcoffset(_TZ_REFERENCE)
+        if delta is not None:
+            return format_tzdelta(delta)
+    except Exception:  # noqa: BLE001 - a repr helper must not raise, whatever a custom tzinfo does
+        pass
+    return type(tzinfo).__name__
 
 
 def format_tzdelta(delta: dt.timedelta) -> str:
@@ -178,11 +219,12 @@ def format_tzdelta(delta: dt.timedelta) -> str:
         A string that can be used to represent a timezone in an ISO 8601 format string
 
     Examples:
-        .. code-block:: text
-
-            timedelta(0)                    -> "Z"
-            timedelta(hours=5, minutes=30)  -> "+05:30"
-            timedelta(hours=-5)             -> "-05:00"
+        >>> format_tzdelta(dt.timedelta(0))
+        'Z'
+        >>> format_tzdelta(dt.timedelta(hours=5, minutes=30))
+        '+05:30'
+        >>> format_tzdelta(dt.timedelta(hours=-5))
+        '-05:00'
     """
     try:
         name = dt.timezone(delta).tzname(None)

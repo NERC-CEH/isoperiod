@@ -11,11 +11,6 @@ Creating periods
 :class:`~isoperiod.Period` is abstract - you never instantiate it directly. Instead, a set of static factory
 methods are available to build a period in various ways. All of them return a fully-formed period.
 
-.. code-block:: python
-
-    from datetime import datetime, timedelta
-    from isoperiod import Period
-
 From a named unit
 =================
 
@@ -23,7 +18,7 @@ The most direct route. Each factory takes a count of that unit:
 
 .. list-table::
    :header-rows: 1
-   :widths: 40 25 35
+   :widths: 20 30 35
 
    * - Factory
      - Example
@@ -64,29 +59,29 @@ From a string
 The `ISO 8601 duration <https://en.wikipedia.org/wiki/ISO_8601#Durations>`_ form: ``P``, then a date part, then
 ``T`` and a time part. Parsing is case-insensitive.
 
-.. code-block:: python
+.. literalinclude:: ../examples/creating.py
+   :language: python
+   :start-after: [start:plain_iso_durations]
+   :end-before: [end:plain_iso_durations]
+   :dedent:
 
-    p1y = Period.of("P1Y")          # 1 year
-    p3m = Period.of("P3M")          # 3 months (a quarter)
-    p1d = Period.of("P1D")          # 1 day
-    pt15m = Period.of("PT15M")      # 15 minutes
-    pt25hz = Period.of("PT0.04S")   # 40 ms - 25 Hz sampling
+Components combine, and the period renders back as the string that built it:
 
-Components combine:
-
-.. code-block:: python
-
-    assert Period.of("P1Y6M") == Period.of_months(18)
-    assert Period.of("P1DT12H") == Period.of_hours(36)
-    assert Period.of("PT1H30M") == Period.of_minutes(90)
+.. literalinclude:: ../examples/creating.py
+   :language: python
+   :start-after: [start:combining_components]
+   :end-before: [end:combining_components]
+   :dedent:
 
 .. warning::
 
    A period cannot mix calendar units (years, months) with clock units (days and below), because months have no
    fixed length in seconds. ``"P1M1D"`` raises :class:`~isoperiod.PeriodValidationError`.
 
-:meth:`~isoperiod.Period.of_iso_duration` parses this form and only this form - useful when you want to reject the
-extended syntaxes explicitly.
+.. note::
+
+   :meth:`~isoperiod.Period.of_iso_duration` parses this form and only this form - useful when you want to reject the
+   extended syntaxes explicitly.
 
 2. Duration with an offset
 --------------------------
@@ -94,14 +89,24 @@ extended syntaxes explicitly.
 An extension of the ISO 8601 format, written ``<duration>+<offset>``. The offset is itself a duration, and shifts
 every interval boundary forwards by that amount:
 
-.. code-block:: python
+.. literalinclude:: ../examples/creating.py
+   :language: python
+   :start-after: [start:offset_form]
+   :end-before: [end:offset_form]
+   :dedent:
 
-    assert Period.of("P1D+T9H") == Period.of_days(1).with_hour_offset(9)
-    assert Period.of("PT15M+T5M") == Period.of_minutes(15).with_minute_offset(5)
-    assert Period.of("P1Y+9M") == Period.of_years(1).with_month_offset(9)
-    assert Period.of("P1Y+9MT9H") == Period.of_years(1).with_month_offset(9).with_hour_offset(9)
+There are also ``with_*_offset`` methods that apply an offset to an existing period (returning a new independent Period
+object):
 
-:meth:`~isoperiod.Period.of_duration` accepts both this form and a plain duration.
+.. literalinclude:: ../examples/creating.py
+   :language: python
+   :start-after: [start:with_offset_form]
+   :end-before: [end:with_offset_form]
+   :dedent:
+
+.. note::
+
+    :meth:`~isoperiod.Period.of_duration` accepts both this offset form and a plain duration (with no offset).
 
 3. Duration with an origin
 --------------------------
@@ -109,35 +114,57 @@ every interval boundary forwards by that amount:
 Written ``<start>/<duration>``. The ``start`` datetime becomes ordinal ``0`` **and** a boundary of the period, which
 fixes the grid for periods that have no meaningful natural boundary:
 
-.. code-block:: python
+.. literalinclude:: ../examples/creating.py
+   :language: python
+   :start-after: [start:origin_form]
+   :end-before: [end:origin_form]
+   :dedent:
 
-    p = Period.of("2024-01-01/P7D")
+.. jupyter-execute::
+   :hide-code:
 
-    assert p.ordinal(datetime(2024, 1, 1)) == 0
-    assert p.is_aligned(datetime(2024, 1, 1)) == True
-    assert p.datetime(1) == datetime(2024, 1, 8)
+   from examples import creating
+
+   creating.origin_form()
 
 The start may be a full datetime, or a reduced-precision date - a bare year or year-month is padded to its first
 instant, following ISO 8601:
 
-.. code-block:: python
+.. literalinclude:: ../examples/creating.py
+   :language: python
+   :start-after: [start:reduced_precision_origin]
+   :end-before: [end:reduced_precision_origin]
+   :dedent:
 
-    assert Period.of("2024/P1Y") == Period.of("2024-01-01/P1Y")
-    assert Period.of("1883-01-01T09:00/P1D") == Period.of("P1D+T9H").with_origin(datetime(1883, 1, 1, 9, 0))
+.. jupyter-execute::
+   :hide-code:
 
-:meth:`~isoperiod.Period.of_date_and_duration` parses this form only.
+   from examples import creating
 
-See :doc:`offsets` for the difference between an offset and an origin.
+   creating.reduced_precision_origin()
+
+
+.. note::
+
+   :meth:`~isoperiod.Period.of_date_and_duration` parses this form only.
 
 From a timedelta
 ================
 
 :meth:`~isoperiod.Period.of_timedelta` builds a period matching any fixed-length duration:
 
-.. code-block:: python
+.. literalinclude:: ../examples/creating.py
+   :language: python
+   :start-after: [start:from_timedelta]
+   :end-before: [end:from_timedelta]
+   :dedent:
 
-    assert Period.of_timedelta(timedelta(minutes=30)) == Period.of_minutes(30)
-    assert Period.of_timedelta(timedelta(milliseconds=20)) == Period.of("PT0.02S")
+.. jupyter-execute::
+   :hide-code:
+
+   from examples import creating
+
+   creating.from_timedelta()
 
 There is no equivalent for months and years - a ``timedelta`` cannot represent them.
 
@@ -155,15 +182,15 @@ Two exceptions are raised when a period cannot be built, both subclasses of :cla
 
 Catch :class:`~isoperiod.PeriodError` to handle both:
 
-.. code-block:: python
+.. literalinclude:: ../examples/creating.py
+   :language: python
+   :start-after: [start:handling_bad_input]
+   :end-before: [end:handling_bad_input]
+   :dedent:
 
-    from isoperiod import Period, PeriodError
+.. jupyter-execute::
+   :hide-code:
 
-    def parse_resolution(text: str) -> Period | None:
-        try:
-            return Period.of(text)
-        except PeriodError:
-            return None
+   from examples import creating
 
-    assert parse_resolution("every 15 mins") is None  # PeriodParsingError
-    assert parse_resolution("P1M1D") is None          # PeriodValidationError
+   creating.handling_bad_input()

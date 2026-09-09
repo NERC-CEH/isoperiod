@@ -1,4 +1,5 @@
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -381,12 +382,20 @@ class TestStrAndRepr:
         assert str(props) == expected
 
     def test_repr_appends_timezone_and_shift(self) -> None:
-        """Test that repr() adds the [tz] bracket and a trailing shift when present."""
+        """Test that repr() adds the [tz] bracket and an @shift when present."""
         props = seconds(1).with_tzinfo(dt.UTC).with_ordinal_shift(5)
-        assert repr(props) == "PT1S[Z]5"
+        assert repr(props) == "PT1S[Z]@5"
 
-    def test_repr_of_offsetless_timezone_has_empty_brackets(self) -> None:
-        """Test that a tzinfo that can't report an offset renders as an empty '[]'."""
+    def test_repr_of_a_naive_period_has_no_brackets(self) -> None:
+        """Test that a naive period reprs as its plain duration, with nothing appended."""
+        assert repr(seconds(1)) == "PT1S"
+
+    def test_repr_names_a_zoneinfo_by_its_key(self) -> None:
+        """Test that a named zone is identified by name, not by the offset it happened to have in 1847."""
+        assert repr(seconds(1).with_tzinfo(ZoneInfo("Europe/London"))) == "PT1S[Europe/London]"
+
+    def test_repr_of_offsetless_timezone_is_distinct_from_naive(self) -> None:
+        """Test that a tzinfo that can't report an offset still reprs differently from a naive period."""
 
         class _NoOffsetTZ(dt.tzinfo):
             def utcoffset(self, _: dt.datetime | None) -> dt.timedelta | None:
@@ -398,7 +407,18 @@ class TestStrAndRepr:
             def dst(self, _: dt.datetime | None) -> dt.timedelta | None:
                 return None
 
-        assert repr(seconds(1).with_tzinfo(_NoOffsetTZ())).endswith("[]")
+        odd = seconds(1).with_tzinfo(_NoOffsetTZ())
+        assert repr(odd) == "PT1S[_NoOffsetTZ]"
+        assert repr(odd) != repr(seconds(1))
+
+    def test_repr_of_an_unusable_timezone_does_not_raise(self) -> None:
+        """Test that a tzinfo which raises from utcoffset still reprs, since repr must never fail."""
+
+        class _BrokenTZ(dt.tzinfo):
+            def utcoffset(self, _: dt.datetime | None) -> dt.timedelta | None:
+                raise RuntimeError("no offset here")
+
+        assert repr(seconds(1).with_tzinfo(_BrokenTZ())) == "PT1S[_BrokenTZ]"
 
 
 class TestOrdering:

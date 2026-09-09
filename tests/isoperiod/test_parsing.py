@@ -141,10 +141,10 @@ class TestOfDuration:
     @pytest.mark.parametrize(
         "text,expected_repr",
         [
-            ("P1D", "P1D[]"),
-            ("P1D+T9H", "P1D+T9H[]"),
-            ("P1Y+9MT9H", "P1Y+9MT9H[]"),
-            ("PT10S+T0.5S", "PT10S+T0.5S[]"),
+            ("P1D", "P1D"),
+            ("P1D+T9H", "P1D+T9H"),
+            ("P1Y+9MT9H", "P1Y+9MT9H"),
+            ("PT10S+T0.5S", "PT10S+T0.5S"),
         ],
         ids=["plain", "day + hour offset", "water year", "sub-second offset"],
     )
