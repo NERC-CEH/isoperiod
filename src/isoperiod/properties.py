@@ -15,6 +15,7 @@ from isoperiod.iso import (
     second_string,
     tz_label,
 )
+from isoperiod.words import frequency_word, join_words, month_words, period_name, second_words
 
 if TYPE_CHECKING:
     from isoperiod.parsing import PeriodFields
@@ -453,6 +454,75 @@ class Properties:
         offset_str = f"+{month_part}{microsecond_part}" if month_part or microsecond_part else ""
 
         return offset_str
+
+    def duration_words(self) -> list[str]:
+        """Return this period's duration (excluding any offset) as a list of English word phrases.
+
+        Returns:
+            A list of phrases such as ``["1 year", "6 months"]``
+        """
+        match self.step:
+            case Step.MICROSECONDS:
+                seconds, microseconds = divmod(self.multiplier, 1_000_000)
+                return second_words(seconds, microseconds)
+            case Step.SECONDS:
+                return second_words(self.multiplier, 0)
+            case Step.MONTHS:
+                return month_words(self.multiplier)
+        raise illegal_step(self.step)
+
+    def offset_suffix(self) -> str:
+        """Return this period's offset as a bracketed suffix, or "" if it has none.
+
+        Returns:
+            A string such as ``" (+9 months and 9 hours)"``, or ``""``
+        """
+        if (self.month_offset == 0) and (self.microsecond_offset == 0):
+            return ""
+        words = month_words(self.month_offset) if self.month_offset > 0 else []
+        if self.microsecond_offset > 0:
+            seconds, microseconds = divmod(self.microsecond_offset, 1_000_000)
+            words += second_words(seconds, microseconds)
+        return f" (+{join_words(words)})"
+
+    @property
+    def verbose(self) -> str:
+        """This period's duration and offset, spelled out in English words.
+
+        Backs :attr:`isoperiod.Period.verbose`; see there for details.
+
+        Returns:
+            A string such as "1 year (+9 months and 9 hours)"
+
+        Examples:
+            >>> Properties.of_months(12).verbose
+            '1 year'
+            >>> Properties.of_seconds(86_400).with_microsecond_offset(32_400_000_000).verbose
+            '1 day (+9 hours)'
+        """
+        return join_words(self.duration_words()) + self.offset_suffix()
+
+    @property
+    def descriptive(self) -> str:
+        """This period's frequency, named where there is a common word for it.
+
+        Backs :attr:`isoperiod.Period.descriptive`; see there for details.
+
+        Returns:
+            A string such as "Daily" or "15 minutes", with a name or offset in brackets if there is one
+
+        Examples:
+            >>> Properties.of_seconds(86_400).descriptive
+            'Daily'
+            >>> Properties.of_seconds(900).descriptive
+            '15 minutes'
+        """
+        word = frequency_word(self.step, self.multiplier)
+        base = word if word is not None else join_words(self.duration_words())
+        name = period_name(self.step, self.multiplier, self.month_offset, self.microsecond_offset)
+        if name is not None:
+            return f"{base} ({name})"
+        return base + self.offset_suffix()
 
     def is_epoch_agnostic(self) -> bool:
         """Return True if this period splits the timeline the same way whatever epoch is used.

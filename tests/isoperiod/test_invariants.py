@@ -152,3 +152,8 @@ class TestEveryPeriod:
             period.datetime(period.max_ordinal + 1)
         with pytest.raises((ValueError, OverflowError)):
             period.datetime(period.min_ordinal - 1)
+
+    def test_verbose_and_descriptive_are_never_empty(self, period: Period) -> None:
+        """Test that both string forms produce something, for every step, offset and timezone."""
+        assert period.verbose
+        assert period.descriptive

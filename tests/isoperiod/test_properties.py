@@ -476,6 +476,8 @@ class TestStepDispatchGuards:
             lambda p: p.pl_interval,
             lambda p: p.is_epoch_agnostic(),
             lambda p: p._nominal_microseconds(),
+            lambda p: p.verbose,
+            lambda p: p.descriptive,
         ],
         ids=[
             "iso_duration",
@@ -485,6 +487,8 @@ class TestStepDispatchGuards:
             "pl_interval",
             "is_epoch_agnostic",
             "_nominal_microseconds",
+            "verbose",
+            "descriptive",
         ],
     )
     def test_bad_step_is_rejected(self, call) -> None:
@@ -492,3 +496,67 @@ class TestStepDispatchGuards:
         __post_init__, reaches its final branch."""
         with pytest.raises(PeriodValidationError):
             call(_mutated(seconds(10), step=999))
+
+
+class TestVerbose:
+    @pytest.mark.parametrize(
+        "props,expected",
+        [
+            (months(12), "1 year"),
+            (months(18), "1 year and 6 months"),
+            (seconds(900), "15 minutes"),
+            (seconds(90_061), "1 day, 1 hour, 1 minute and 1 second"),
+            (micros(500_000), "0.5 seconds"),
+            (seconds(86_400, microsecond_offset=32_400_000_000), "1 day (+9 hours)"),
+            (months(12, month_offset=9, microsecond_offset=32_400_000_000), "1 year (+9 months and 9 hours)"),
+        ],
+        ids=[
+            "single unit",
+            "two units",
+            "seconds step",
+            "multi-unit seconds",
+            "sub-second",
+            "seconds offset",
+            "month and time offset",
+        ],
+    )
+    def test_render(self, props: Properties, expected: str) -> None:
+        """Test that verbose spells the duration out, appending a bracketed offset when there is one."""
+        assert props.verbose == expected
+
+
+class TestDescriptive:
+    @pytest.mark.parametrize(
+        "props,expected",
+        [
+            (seconds(3_600), "Hourly"),
+            (seconds(86_400), "Daily"),
+            (seconds(604_800), "Weekly"),
+            (months(1), "Monthly"),
+            (months(3), "Quarterly"),
+            (months(12), "Yearly"),
+            (seconds(1), "1 second"),
+            (seconds(60), "1 minute"),
+            (seconds(900), "15 minutes"),
+            (seconds(86_400, microsecond_offset=32_400_000_000), "Daily (UK Water Day)"),
+            (months(12, month_offset=9, microsecond_offset=32_400_000_000), "Yearly (UK Water Year)"),
+            (seconds(900, microsecond_offset=300_000_000), "15 minutes (+5 minutes)"),
+        ],
+        ids=[
+            "hourly",
+            "daily",
+            "weekly",
+            "monthly",
+            "quarterly",
+            "yearly",
+            "no word for a second",
+            "no word for a minute",
+            "no common word",
+            "named period",
+            "named period with year unit",
+            "offset with no common word",
+        ],
+    )
+    def test_render(self, props: Properties, expected: str) -> None:
+        """Test that descriptive names the frequency, preferring a recognised period name over a plain offset."""
+        assert props.descriptive == expected

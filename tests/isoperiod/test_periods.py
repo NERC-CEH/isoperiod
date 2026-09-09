@@ -201,6 +201,62 @@ class TestStrAndRepr:
         assert reconstructed == period
 
 
+class TestVerboseAndDescriptive:
+    def test_verbose_spells_out_the_duration(self) -> None:
+        """Test that verbose renders a plain period as English words with no bracket."""
+        assert Period.of_years(1).verbose == "1 year"
+
+    def test_verbose_appends_the_offset(self) -> None:
+        """Test that an offset appears as a bracketed suffix on verbose."""
+        assert Period.of("P1D+T9H").verbose == "1 day (+9 hours)"
+
+    def test_verbose_appends_the_origin_instead_of_the_offset(self) -> None:
+        """Test that an origin, not an offset, is what verbose reports once a period has one."""
+        assert Period.of("2024-01-01/P7D").verbose == "7 days (from 2024-01-01)"
+
+    def test_descriptive_names_the_frequency(self) -> None:
+        """Test that descriptive uses the common word for a recognised frequency."""
+        assert Period.of_days(1).descriptive == "Daily"
+
+    def test_descriptive_falls_back_without_a_common_word(self) -> None:
+        """Test that a frequency with no common word falls back to the plain duration words."""
+        assert Period.of_minutes(15).descriptive == "15 minutes"
+        assert Period.of_seconds(1).descriptive == "1 second"
+
+    @pytest.mark.parametrize(
+        "period",
+        [
+            Period.of("P1D+T9H"),
+            Period.of_days(1).with_hour_offset(9),
+            Period.of("P1D+T33H"),
+        ],
+        ids=["direct offset string", "with_hour_offset builder", "offset over a whole extra day"],
+    )
+    def test_descriptive_names_the_uk_water_day(self, period: Period) -> None:
+        """Test that every equivalent construction of the UK water day grid is named alike."""
+        assert period.descriptive == "Daily (UK Water Day)"
+
+    def test_descriptive_names_the_uk_water_year(self) -> None:
+        """Test that the UK water year grid is named."""
+        assert Period.of("P1Y+9MT9H").descriptive == "Yearly (UK Water Year)"
+
+    def test_origin_outranks_the_name(self) -> None:
+        """Test that an origin on the water day grid reports the origin, not the name."""
+        water_day = Period.of("P1D+T9H").with_origin(dt.datetime(2024, 1, 1, 9))
+        assert water_day.descriptive == "Daily (from 2024-01-01 09:00)"
+
+    def test_unreachable_origin_falls_back_to_the_plain_form(self) -> None:
+        """Test that verbose and descriptive still render when the origin itself cannot be recovered."""
+        unreachable = build_shifted_period(Properties.of_seconds(86_400).with_ordinal_shift(10**9))
+        assert unreachable.verbose == "1 day"
+        assert unreachable.descriptive == "Daily"
+
+    def test_equal_periods_describe_identically(self) -> None:
+        """Test that a 1-day period and a 24-hour period describe alike, matching their equality."""
+        assert Period.of_days(1).verbose == Period.of_hours(24).verbose == "1 day"
+        assert Period.of_days(1).descriptive == Period.of_hours(24).descriptive == "Daily"
+
+
 class TestEqualityAndHashing:
     def test_equal_periods_of_different_units(self) -> None:
         """Test that a 1-day period equals a 24-hour period."""
