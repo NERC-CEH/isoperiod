@@ -21,6 +21,7 @@ from isoperiod.timeline import (
     total_microseconds,
     year_month,
 )
+from isoperiod.words import frequency_word, join_words, origin_text
 
 
 class Period(ABC):
@@ -327,6 +328,53 @@ class Period(ABC):
             An integer representing the microsecond offset
         """
         return self._properties.microsecond_offset
+
+    @property
+    def verbose(self) -> str:
+        """This period's duration, offset and origin, spelled out in English words.
+
+        For display only - not accepted by :meth:`of` or any other constructor. See :attr:`iso_duration` and
+        :meth:`__str__` for the parseable forms.
+
+        Returns:
+            A string such as "1 year (+9 months and 9 hours)"
+
+        Examples:
+            >>> Period.of_years(1).verbose
+            '1 year'
+            >>> Period.of("P1D+T9H").verbose
+            '1 day (+9 hours)'
+            >>> Period.of("2024-01-01/P7D").verbose
+            '7 days (from 2024-01-01)'
+        """
+        origin = self._origin_datetime()
+        if origin is None:
+            return self._properties.verbose
+        return f"{join_words(self._properties.duration_words())} (from {origin_text(origin)})"
+
+    @property
+    def descriptive(self) -> str:
+        """This period's frequency, named where there is a common word or recognised name for it.
+
+        For display only - see :attr:`verbose` for the same caveat.
+
+        Returns:
+            A string such as "Daily" or "15 minutes", with a name, offset or origin in brackets if there is one
+
+        Examples:
+            >>> Period.of_days(1).descriptive
+            'Daily'
+            >>> Period.of("P1D+T9H").descriptive
+            'Daily (UK Water Day)'
+            >>> Period.of("2024-01-01/P7D").descriptive
+            'Weekly (from 2024-01-01)'
+        """
+        origin = self._origin_datetime()
+        if origin is None:
+            return self._properties.descriptive
+        base = frequency_word(self._properties.step, self._properties.multiplier)
+        base = base if base is not None else join_words(self._properties.duration_words())
+        return f"{base} (from {origin_text(origin)})"
 
     def has_offset(self) -> bool:
         """Check if this period has an offset
@@ -833,22 +881,35 @@ class Period(ABC):
         """
         return self._properties.is_subperiod_of(other._properties)
 
+    def _origin_datetime(self) -> dt.datetime | None:
+        """Return this period's origin, or None if it has no usable one.
+
+        A period with an ordinal shift numbers the interval starting at its origin zero, so the origin is
+        ``datetime(0)``. The period's tzinfo is left off, since :meth:`of` reads a timezone from an origin that
+        carries one.
+
+        Returns:
+            The origin, or None if this period has no ordinal shift or its ordinal zero falls outside the
+            datetime range
+        """
+        if self._properties.ordinal_shift == 0:
+            return None
+        try:
+            return naive(self.datetime(0))
+        except (ValueError, OverflowError):
+            return None
+
     def _origin_string(self) -> str | None:
         """Return this period's origin as an ISO 8601 date or datetime, or None if it has no usable one.
 
-        A period with an ordinal shift numbers the interval starting at its origin zero, so the origin is
-        ``datetime(0)``. The time is dropped when the origin falls at midnight, and the period's tzinfo is left
-        off, since :meth:`of` reads a timezone from an origin that carries one.
+        The time is dropped when the origin falls at midnight.
 
         Returns:
             The origin as an ISO 8601 string, or None if this period has no ordinal shift or its ordinal zero
             falls outside the datetime range
         """
-        if self._properties.ordinal_shift == 0:
-            return None
-        try:
-            origin = naive(self.datetime(0))
-        except (ValueError, OverflowError):
+        origin = self._origin_datetime()
+        if origin is None:
             return None
         if origin.time() == dt.time.min:
             return origin.date().isoformat()
