@@ -46,6 +46,8 @@ Attributes
     :toctree: _api/
 
     ~Period.iso_duration
+    ~Period.verbose
+    ~Period.descriptive
     ~Period.timedelta
     ~Period.tzinfo
     ~Period.offset

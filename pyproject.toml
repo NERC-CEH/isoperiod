@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "isoperiod"
-version = "1.1.0"
+version = "1.2.0"
 description = "ISO 8601 period and duration arithmetic, including offsets from the natural boundary, for defining sampling resolution and periodicity in timeseries data"
 readme = "README.md"
 authors = [

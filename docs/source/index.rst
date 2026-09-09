@@ -116,6 +116,7 @@ This project is licensed under the `MIT <https://github.com/NERC-CEH/isoperiod/b
     user_guide/comparing
     user_guide/timezones
     user_guide/interop
+    user_guide/describing
 
 .. toctree::
     :hidden:
