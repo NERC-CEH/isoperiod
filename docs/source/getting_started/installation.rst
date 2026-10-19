@@ -28,13 +28,13 @@ Install options
 
         .. code-block:: bash
 
-            uv add git+https://github.com/NERC-CEH/isoperiod.git@main
+            uv add isoperiod
 
     .. tab-item:: :iconify:`devicon:pypi` pip
 
         .. code-block:: bash
 
-            pip install git+https://github.com/NERC-CEH/isoperiod.git@main
+            pip install isoperiod
 
 Importing
 =========

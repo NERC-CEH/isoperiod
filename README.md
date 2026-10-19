@@ -1,4 +1,5 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/isoperiod.svg)](https://pypi.org/project/isoperiod/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/NERC-CEH/isoperiod/blob/main/LICENSE)
 ![Language](https://img.shields.io/github/languages/top/NERC-CEH/isoperiod)
 [![tests badge](https://github.com/NERC-CEH/isoperiod/actions/workflows/pipeline.yml/badge.svg)](https://github.com/NERC-CEH/isoperiod/actions)
 [![Docs](https://img.shields.io/badge/docs-%F0%9F%93%9A%20online-blue)](https://nerc-ceh.github.io/isoperiod)
@@ -21,11 +22,23 @@ and periodicity in timeseries data
   another.
 * **No runtime dependencies** - pure Python on top of `datetime`, with helpers for handing periods to Polars.
 
+## Installation
+
+```bash
+pip install isoperiod
+```
+
+or with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv add isoperiod
+```
+
 See the [documentation](https://nerc-ceh.github.io/isoperiod/) for a quick start, the concepts behind the API, and the full reference.
 
 ## License
 
-This project is licensed under the [MIT license](LICENSE).
+This project is licensed under the [MIT license](https://github.com/NERC-CEH/isoperiod/blob/main/LICENSE).
 
 ## Contributing
 
@@ -111,6 +124,6 @@ open _build/html/index.html
 
 ## Citation
 
-If you use this software, please cite it using the metadata in [`CITATION.cff`](./CITATION.cff).
+If you use this software, please cite it using the metadata in [`CITATION.cff`](https://github.com/NERC-CEH/isoperiod/blob/main/CITATION.cff).
 
 Built with [Cookiecutter](https://github.com/cookiecutter/cookiecutter) and the [NERC-CEH/fdri-cookiecutter-templates](https://github.com/NERC-CEH/fdri-cookiecutter-templates) template.
